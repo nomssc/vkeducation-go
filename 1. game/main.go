@@ -17,8 +17,6 @@ func NewItem(name string) Item {
 	return Item{name: name}
 }
 
-func NewItemsList()
-
 // INVENTORY
 
 type Inventory struct {
