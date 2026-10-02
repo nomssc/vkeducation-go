@@ -10,11 +10,12 @@ var (
 // OBJECTS
 
 type Object struct {
-	name string
+	name      string
+	inventory map[Item]struct{}
 }
 
-func NewObject(name string) Object {
-	return Object{name: name}
+func NewObject(name string) *Object {
+	return &Object{name: name}
 }
 
 // ITEMS
