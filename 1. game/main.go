@@ -7,6 +7,38 @@ var (
 	ErrNotFound      = errors.New("not found")
 )
 
+// INVENTORY
+
+type Inventory struct {
+	store map[string]struct{}
+}
+
+func NewInventory() *Inventory {
+	return &Inventory{store: make(map[string]struct{})}
+}
+
+func (i *Inventory) Put(item string) error {
+	_, ok := i.store[item]
+	if !ok {
+		i.store[item] = struct{}{}
+	} else {
+		return ErrAlreadyExists
+	}
+
+	return nil
+}
+
+func (i *Inventory) Take(item string) error {
+	_, ok := i.store[item]
+	if !ok {
+		return ErrNotFound
+	} else {
+		delete(i.store, item)
+	}
+
+	return nil
+}
+
 // OBJECTS
 
 type Object struct {
@@ -25,38 +57,6 @@ type Item struct {
 
 func NewItem(name string) Item {
 	return Item{name: name}
-}
-
-// INVENTORY
-
-type Inventory struct {
-	store map[Item]struct{}
-}
-
-func NewInventory() *Inventory {
-	return &Inventory{store: make(map[Item]struct{})}
-}
-
-func (i *Inventory) Put(item Item) error {
-	_, ok := i.store[item]
-	if !ok {
-		i.store[item] = struct{}{}
-	} else {
-		return ErrAlreadyExists
-	}
-
-	return nil
-}
-
-func (i *Inventory) Take(item Item) error {
-	_, ok := i.store[item]
-	if !ok {
-		return ErrNotFound
-	} else {
-		delete(i.store, item)
-	}
-
-	return nil
 }
 
 func main() {
