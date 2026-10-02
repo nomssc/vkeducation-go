@@ -7,6 +7,16 @@ var (
 	ErrNotFound      = errors.New("not found")
 )
 
+// OBJECTS
+
+type Object struct {
+	name string
+}
+
+func NewObject(name string) Object {
+	return Object{name: name}
+}
+
 // ITEMS
 
 type Item struct {
