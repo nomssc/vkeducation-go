@@ -3,20 +3,10 @@ package main
 import "errors"
 
 var (
-	ErrAlreadyExists = errors.New("already exists")
-	ErrNotFound      = errors.New("not found")
+	ErrAlreadyExists  = errors.New("already exists")
+	ErrNotFound       = errors.New("not found")
+	ErrStatusMismatch = errors.New("status mismatch")
 )
-
-// OBJECTS
-
-type Object struct {
-	name      string
-	inventory map[Item]struct{}
-}
-
-func NewObject(name string) *Object {
-	return &Object{name: name}
-}
 
 // ITEMS
 
@@ -26,6 +16,50 @@ type Item struct {
 
 func NewItem(name string) Item {
 	return Item{name: name}
+}
+
+// OBJECTS
+
+type Object struct {
+	name      string
+	status    int
+	inventory map[string]Item
+}
+
+func NewObject(name string) *Object {
+	return &Object{
+		name:      name,
+		status:    0,
+		inventory: make(map[string]Item),
+	}
+}
+
+func (o *Object) CheckStatus(status int) error {
+	if o.status != status {
+		return ErrStatusMismatch
+	} else {
+		return nil
+	}
+}
+
+func (o *Object) TakeItem(i string) (Item, error) {
+	item, ok := o.inventory[i]
+	if !ok {
+		return Item{}, ErrNotFound
+	} else {
+		delete(o.inventory, i)
+		return item, nil
+	}
+}
+
+func (o *Object) PutItem(i Item) error {
+	_, ok := o.inventory[i.name]
+	if !ok {
+		o.inventory[i.name] = i
+		return nil
+	} else {
+		return ErrAlreadyExists
+	}
 }
 
 func main() {
