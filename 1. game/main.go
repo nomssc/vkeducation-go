@@ -67,25 +67,6 @@ func (o *Object) PutItem(i Item) error {
 	}
 }
 
-func main() {
-	/*
-		в этой функции можно ничего не писать,
-		но тогда у вас не будет работать через go run main.go
-		очень круто будет сделать построчный ввод команд тут, хотя это и не требуется по заданию
-	*/
-
-	initGame()
-
-	_ = handleCommand("some command")
-}
-
-func initGame() {
-	/*
-		эта функция инициализирует игровой мир - все комнаты
-		если что-то было - оно корректно перезатирается
-	*/
-}
-
 type CodecConfig struct {
 	KnownCommands map[string]struct{}
 }
@@ -108,12 +89,31 @@ func (c Codec) validateCommand(command string) bool {
 func (c Codec) Unparse(command string) ([]string, error) {
 	cmd := strings.Split(command, " ")
 
-	ok := c.validateCommand(cmd[0])
-	if !ok {
+	validCommand := c.validateCommand(cmd[0])
+	if !validCommand {
 		return nil, ErrCommandNotFound
 	}
 
 	return cmd, nil
+}
+
+func main() {
+	/*
+		в этой функции можно ничего не писать,
+		но тогда у вас не будет работать через go run main.go
+		очень круто будет сделать построчный ввод команд тут, хотя это и не требуется по заданию
+	*/
+
+	initGame()
+
+	_ = handleCommand("some command")
+}
+
+func initGame() {
+	/*
+		эта функция инициализирует игровой мир - все комнаты
+		если что-то было - оно корректно перезатирается
+	*/
 }
 
 func handleCommand(command string) string {
