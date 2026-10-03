@@ -79,25 +79,34 @@ func main() {
 	_ = handleCommand("some command")
 }
 
-type Resources struct {
-	TUI *TUI
-}
+/*
+ * CLI LAYER
+ *
+ * Responsible for user
+ * input and game output.
+ */
 
-type TUI struct {
-	Parser Parser
-}
+var c *CLI
 
 type Parser interface {
 	Unparse(command string) []string
 }
 
-// CODEC THE INPUT PARSER
+type CLI struct {
+	Parser Parser
+}
 
-type CodecConfig struct{}
+func (c *CLI) Accept(command string) []string {
+	return c.Parser.Unparse(command)
+}
+
+// Codec the Input Parser
+
+type ConfigCodec struct{}
 
 type Codec struct{}
 
-func NewCodec(c CodecConfig) Codec {
+func NewCodec(c ConfigCodec) Codec {
 	return Codec{}
 }
 
@@ -106,6 +115,7 @@ func (c Codec) Unparse(command string) []string {
 }
 
 func initGame() {
+	c = &CLI{}
 }
 
 func handleCommand(command string) string {
