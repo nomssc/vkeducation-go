@@ -187,20 +187,31 @@ func (c Codec) UnparseCommandString(command string) ([]string, error) {
 }
 
 /*
- * CACHE LAYER
+ * WORLD LAYER
  *
  * Stores player and world
  * and their current status.
  */
 
-type Storage struct {
-	store *World
+// Errors
+
+var (
+	ErrInventoryItemNotFound   = errors.New("no item in the inventory")
+	ErrInventoryNotFound       = errors.New("inventory not found")
+	ErrInventoryAlreadyHasItem = errors.New("inventory already has item")
+	ErrInventoryAvailable      = errors.New("inventory available")
+	ErrInventoryNotAvailable   = errors.New("inventory not available")
+)
+
+// World Object
+
+type ConfigWorld struct {
+	World
 }
 
-func NewStorage(w *World) *Storage {
-	return &Storage{
-		store: w,
-	}
+type World struct {
+	Player *Player
+	Rooms  map[string]*Room
 }
 
 type Item struct {
@@ -209,27 +220,80 @@ type Item struct {
 }
 
 type Object struct {
-	Name       string
 	Inventory  map[string]*Item
 	Status     string
 	AffectedBy map[string]*Item
 	CanHold    map[string]*Item
 }
 
-type Place struct {
-	Name      string
+type Room struct {
 	Inventory map[string]*Object
-	Gateways  map[string]*Place
+	Gateways  map[string]*Room
 }
 
 type Player struct {
-	Name      string
-	Inventory map[string]*Item
-	Position  *Place
-	Goals     []map[string][]string
+	Inventory          map[string]*Item
+	InventoryAvailable bool
+	Position           *Room
+	Goals              []map[string][]string
 }
 
-type World struct{}
+func (p *Player) CreateInventory() error {
+	if p.InventoryAvailable {
+		return ErrInventoryAvailable
+	}
+
+	p.InventoryAvailable = true
+
+	return nil
+}
+
+func (p *Player) RemoveInventory() error {
+	if !p.InventoryAvailable {
+		return ErrInventoryNotAvailable
+	}
+
+	p.InventoryAvailable = false
+
+	return nil
+}
+
+func (p *Player) TakeItem(name string) (*Item, error) {
+	if !p.InventoryAvailable {
+		return nil, ErrInventoryNotFound
+	}
+
+	item, ok := p.Inventory[name]
+	if !ok {
+		return nil, ErrInventoryItemNotFound
+	}
+
+	delete(p.Inventory, name)
+
+	return item, nil
+}
+
+func (p *Player) PutItem(i *Item) error {
+	if !p.InventoryAvailable {
+		return ErrInventoryNotFound
+	}
+
+	_, ok := p.Inventory[i.Name]
+	if ok {
+		return ErrInventoryAlreadyHasItem
+	}
+
+	p.Inventory[i.Name] = i
+
+	return nil
+}
+
+func NewWorld(c *ConfigWorld) *World {
+	return &World{
+		Player: c.World.Player,
+		Rooms:  c.World.Rooms,
+	}
+}
 
 /*
  * TRANSPORT LAYER
