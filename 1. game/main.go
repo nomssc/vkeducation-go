@@ -84,9 +84,15 @@ func initGame() {
 	*/
 }
 
-type Codec struct{}
+type CodecConfig struct {
+	KnownCommands map[string]struct{}
+}
 
-func NewCodec() Codec {
+type Codec struct {
+	kc map[string]struct{}
+}
+
+func NewCodec(c CodecConfig) Codec {
 	return Codec{}
 }
 
