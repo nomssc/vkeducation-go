@@ -34,7 +34,7 @@ func initGame() {
 	a.Handle("взять", nil)
 	a.Handle("надеть", nil)
 
-	cli = NewCLI(ConfigCLI{
+	cli = NewCLI(&ConfigCLI{
 		Route: a,
 		Codec: NewCodec(),
 	})
@@ -90,7 +90,7 @@ type CLI struct {
 	codec Serializer
 }
 
-func NewCLI(c ConfigCLI) *CLI {
+func NewCLI(c *ConfigCLI) *CLI {
 	return &CLI{
 		route: c.Route,
 		codec: c.Codec,
@@ -123,7 +123,12 @@ func handleCommand(command string) string {
 		}
 	}
 
-	return h(c).resp
+	result, err := h(c)
+	if err != nil {
+		return err.Error()
+	} else {
+		return result.resp
+	}
 }
 
 // Action the Router
@@ -134,7 +139,7 @@ var (
 
 type ConfigAction struct{}
 
-type Handler func(c *Command) *Result
+type Handler func(c *Command) (*Result, error)
 
 type Action struct {
 	c map[string]Handler
@@ -178,4 +183,44 @@ func (c Codec) UnparseCommandString(command string) ([]string, error) {
 	}
 
 	return cmd, nil
+}
+
+/*
+ * TRANSPORT LAYER
+ *
+ * Responsible for user
+ * input and game output,
+ * routing and validation.
+ */
+
+// Lookout Route
+
+type LookoutUsecaseInterface interface{}
+
+type LookoutHandler struct {
+	Usecase LookoutUsecaseInterface
+}
+
+func (l *LookoutHandler) LookoutHandlerFunc(c *Command) (*Result, error) {
+	return &Result{}, nil
+}
+
+/*
+ * SERVICE LAYER
+ *
+ * Responsible for business logic.
+ */
+
+// Common Interfaces
+
+type Cache interface{}
+
+// Lookout Logic
+
+type LookoutUsecase struct {
+	Cache Cache
+}
+
+func (l *LookoutUsecase) LookoutUsecaseFunc() {
+
 }
