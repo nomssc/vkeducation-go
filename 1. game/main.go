@@ -67,34 +67,16 @@ func (o *Object) PutItem(i Item) error {
 	}
 }
 
-type CodecConfig struct {
-	KnownCommands map[string]struct{}
-}
+type CodecConfig struct{}
 
-type Codec struct {
-	kc map[string]struct{}
-}
+type Codec struct{}
 
 func NewCodec(c CodecConfig) Codec {
-	return Codec{
-		kc: c.KnownCommands,
-	}
+	return Codec{}
 }
 
-func (c Codec) validateCommand(command string) bool {
-	_, ok := c.kc[command]
-	return ok
-}
-
-func (c Codec) Unparse(command string) ([]string, error) {
-	cmd := strings.Split(command, " ")
-
-	validCommand := c.validateCommand(cmd[0])
-	if !validCommand {
-		return nil, ErrCommandNotFound
-	}
-
-	return cmd, nil
+func (c Codec) Unparse(command string) []string {
+	return strings.Split(command, " ")
 }
 
 func main() {
