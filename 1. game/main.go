@@ -86,6 +86,10 @@ func initGame() {
 
 type Codec struct{}
 
+func NewCodec() Codec {
+	return Codec{}
+}
+
 func (c Codec) Unparse(command string) []string {
 	return strings.Split(command, " ")
 }
