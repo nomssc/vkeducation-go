@@ -9,6 +9,8 @@ var (
 	ErrAlreadyExists  = errors.New("already exists")
 	ErrNotFound       = errors.New("not found")
 	ErrStatusMismatch = errors.New("status mismatch")
+
+	ErrCommandNotFound = errors.New("command not found")
 )
 
 // ITEMS
@@ -93,11 +95,25 @@ type Codec struct {
 }
 
 func NewCodec(c CodecConfig) Codec {
-	return Codec{}
+	return Codec{
+		kc: c.KnownCommands,
+	}
 }
 
-func (c Codec) Unparse(command string) []string {
-	return strings.Split(command, " ")
+func (c Codec) validateCommand(command string) bool {
+	_, ok := c.kc[command]
+	return ok
+}
+
+func (c Codec) Unparse(command string) ([]string, error) {
+	cmd := strings.Split(command, " ")
+
+	ok := c.validateCommand(cmd[0])
+	if !ok {
+		return nil, ErrCommandNotFound
+	}
+
+	return cmd, nil
 }
 
 func handleCommand(command string) string {
