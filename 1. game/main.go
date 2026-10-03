@@ -1,6 +1,9 @@
 package main
 
-import "errors"
+import (
+	"errors"
+	"strings"
+)
 
 var (
 	ErrAlreadyExists  = errors.New("already exists")
@@ -79,6 +82,12 @@ func initGame() {
 		эта функция инициализирует игровой мир - все комнаты
 		если что-то было - оно корректно перезатирается
 	*/
+}
+
+type Codec struct{}
+
+func (c Codec) Unparse(command string) []string {
+	return strings.Split(command, " ")
 }
 
 func handleCommand(command string) string {
