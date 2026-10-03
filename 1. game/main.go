@@ -17,19 +17,33 @@ func main() {
 	_ = handleCommand("some command")
 }
 
+/*
+ * COMMANDS:
+ * - осмотреться
+ * - идти
+ * - применить
+ * - взять
+ * - надеть
+ */
+
 func initGame() {
-	c = &CLI{
-		route: NewAction(&ConfigAction{}),
-		codec: NewCodec(ConfigCodec{}),
-	}
+	a := NewAction()
+	a.Handle("осмотреться", nil)
+	a.Handle("идти", nil)
+	a.Handle("применить", nil)
+	a.Handle("взять", nil)
+	a.Handle("надеть", nil)
+
+	cli = NewCLI(ConfigCLI{
+		Route: a,
+		Codec: NewCodec(),
+	})
 }
 
 /*
- * CLI LAYER
+ * CLI PACKAGE
  *
- * Responsible for user
- * input and game output,
- * routing and validation.
+ * Backend backbone.
  */
 
 // Errors
@@ -55,14 +69,20 @@ type Result struct {
 
 // CLI the Transport Master
 
-var c *CLI
+var cli *CLI
+
+type ConfigCLI struct {
+	Route Router
+	Codec Codec
+}
 
 type Router interface {
-	PickHandler(route string) (func(c Command) Result, error)
+	Handle(route string, h Handler)
+	Handler(c *Command) (Handler, error)
 }
 
 type Serializer interface {
-	Unparse(command string) ([]string, error)
+	UnparseCommandString(command string) ([]string, error)
 }
 
 type CLI struct {
@@ -70,8 +90,15 @@ type CLI struct {
 	codec Serializer
 }
 
+func NewCLI(c ConfigCLI) *CLI {
+	return &CLI{
+		route: c.Route,
+		codec: c.Codec,
+	}
+}
+
 func handleCommand(command string) string {
-	cmd, err := c.codec.Unparse(command)
+	cmd, err := cli.codec.UnparseCommandString(command)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrNoCommand):
@@ -81,7 +108,12 @@ func handleCommand(command string) string {
 		}
 	}
 
-	handler, err := c.route.PickHandler(cmd[0])
+	c := &Command{
+		name: cmd[0],
+		args: cmd[1:],
+	}
+
+	h, err := cli.route.Handler(c)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrNoRoute):
@@ -91,12 +123,7 @@ func handleCommand(command string) string {
 		}
 	}
 
-	c := Command{
-		name: cmd[0],
-		args: cmd[1:],
-	}
-
-	return handler(c).resp
+	return h(c).resp
 }
 
 // Action the Router
@@ -105,27 +132,29 @@ var (
 	ErrNoRoute = errors.New("no route")
 )
 
-type ConfigAction struct {
-	Commands map[string]func(c Command) Result
-}
+type ConfigAction struct{}
+
+type Handler func(c *Command) *Result
 
 type Action struct {
-	c map[string]func(c Command) Result
+	c map[string]Handler
 }
 
-func NewAction(c *ConfigAction) *Action {
-	return &Action{
-		c: c.Commands,
-	}
+func NewAction(c ...*ConfigAction) *Action {
+	return &Action{}
 }
 
-func (a *Action) PickHandler(route string) (func(c Command) Result, error) {
-	handler, ok := a.c[route]
+func (a *Action) Handle(route string, h Handler) {
+	a.c[route] = h
+}
+
+func (a *Action) Handler(c *Command) (Handler, error) {
+	h, ok := a.c[c.name]
 	if !ok {
 		return nil, ErrNoRoute
 	}
 
-	return handler, nil
+	return h, nil
 }
 
 // Codec the Input Parser
@@ -138,11 +167,11 @@ type ConfigCodec struct{}
 
 type Codec struct{}
 
-func NewCodec(c ConfigCodec) Codec {
+func NewCodec(c ...ConfigCodec) Codec {
 	return Codec{}
 }
 
-func (c Codec) Unparse(command string) ([]string, error) {
+func (c Codec) UnparseCommandString(command string) ([]string, error) {
 	cmd := strings.Split(command, " ")
 	if len(cmd) < 1 {
 		return nil, ErrNoCommand
