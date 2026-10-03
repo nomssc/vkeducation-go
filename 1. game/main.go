@@ -17,22 +17,23 @@ func main() {
 	_ = handleCommand("some command")
 }
 
-/*
- * COMMANDS:
- * - осмотреться
- * - идти
- * - применить
- * - взять
- * - надеть
- */
+type Activity string
+
+var (
+	Lookout Activity = "осмотреться"
+	Walk    Activity = "идти"
+	Use     Activity = "применить"
+	Take    Activity = "взять"
+	PutOn   Activity = "надеть"
+)
 
 func initGame() {
 	a := NewAction()
-	a.Handle("осмотреться", nil)
-	a.Handle("идти", nil)
-	a.Handle("применить", nil)
-	a.Handle("взять", nil)
-	a.Handle("надеть", nil)
+	a.Handle(string(Lookout), nil)
+	a.Handle(string(Walk), nil)
+	a.Handle(string(Use), nil)
+	a.Handle(string(Take), nil)
+	a.Handle(string(PutOn), nil)
 
 	cli = NewCLI(&ConfigCLI{
 		Route: a,
@@ -142,7 +143,7 @@ type ConfigAction struct{}
 type Handler func(c *Command) (*Result, error)
 
 type Action struct {
-	c map[string]Handler
+	handlers map[string]Handler
 }
 
 func NewAction(c ...*ConfigAction) *Action {
@@ -150,11 +151,11 @@ func NewAction(c ...*ConfigAction) *Action {
 }
 
 func (a *Action) Handle(route string, h Handler) {
-	a.c[route] = h
+	a.handlers[route] = h
 }
 
 func (a *Action) Handler(c *Command) (Handler, error) {
-	h, ok := a.c[c.name]
+	h, ok := a.handlers[c.name]
 	if !ok {
 		return nil, ErrNoRoute
 	}
@@ -184,6 +185,51 @@ func (c Codec) UnparseCommandString(command string) ([]string, error) {
 
 	return cmd, nil
 }
+
+/*
+ * CACHE LAYER
+ *
+ * Stores player and world
+ * and their current status.
+ */
+
+type Storage struct {
+	store *World
+}
+
+func NewStorage(w *World) *Storage {
+	return &Storage{
+		store: w,
+	}
+}
+
+type Item struct {
+	Name       string
+	Activities map[Activity]bool
+}
+
+type Object struct {
+	Name       string
+	Inventory  map[string]*Item
+	Status     string
+	AffectedBy map[string]*Item
+	CanHold    map[string]*Item
+}
+
+type Place struct {
+	Name      string
+	Inventory map[string]*Object
+	Gateways  map[string]*Place
+}
+
+type Player struct {
+	Name      string
+	Inventory map[string]*Item
+	Position  *Place
+	Goals     []map[string][]string
+}
+
+type World struct{}
 
 /*
  * TRANSPORT LAYER
