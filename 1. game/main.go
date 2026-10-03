@@ -67,18 +67,6 @@ func (o *Object) PutItem(i Item) error {
 	}
 }
 
-type CodecConfig struct{}
-
-type Codec struct{}
-
-func NewCodec(c CodecConfig) Codec {
-	return Codec{}
-}
-
-func (c Codec) Unparse(command string) []string {
-	return strings.Split(command, " ")
-}
-
 func main() {
 	/*
 		в этой функции можно ничего не писать,
@@ -91,11 +79,33 @@ func main() {
 	_ = handleCommand("some command")
 }
 
+type Resources struct {
+	TUI *TUI
+}
+
+type TUI struct {
+	Parser Parser
+}
+
+type Parser interface {
+	Unparse(command string) []string
+}
+
+// CODEC THE INPUT PARSER
+
+type CodecConfig struct{}
+
+type Codec struct{}
+
+func NewCodec(c CodecConfig) Codec {
+	return Codec{}
+}
+
+func (c Codec) Unparse(command string) []string {
+	return strings.Split(command, " ")
+}
+
 func initGame() {
-	/*
-		эта функция инициализирует игровой мир - все комнаты
-		если что-то было - оно корректно перезатирается
-	*/
 }
 
 func handleCommand(command string) string {
