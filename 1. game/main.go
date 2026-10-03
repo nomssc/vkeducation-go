@@ -5,68 +5,6 @@ import (
 	"strings"
 )
 
-var (
-	ErrAlreadyExists  = errors.New("already exists")
-	ErrNotFound       = errors.New("not found")
-	ErrStatusMismatch = errors.New("status mismatch")
-
-	ErrCommandNotFound = errors.New("command not found")
-)
-
-// ITEMS
-
-type Item struct {
-	name string
-}
-
-func NewItem(name string) Item {
-	return Item{name: name}
-}
-
-// OBJECTS
-
-type Object struct {
-	name      string
-	status    int
-	inventory map[string]Item
-}
-
-func NewObject(name string) *Object {
-	return &Object{
-		name:      name,
-		status:    0,
-		inventory: make(map[string]Item),
-	}
-}
-
-func (o *Object) CheckStatus(status int) error {
-	if o.status != status {
-		return ErrStatusMismatch
-	} else {
-		return nil
-	}
-}
-
-func (o *Object) TakeItem(i string) (Item, error) {
-	item, ok := o.inventory[i]
-	if !ok {
-		return Item{}, ErrNotFound
-	} else {
-		delete(o.inventory, i)
-		return item, nil
-	}
-}
-
-func (o *Object) PutItem(i Item) error {
-	_, ok := o.inventory[i.name]
-	if !ok {
-		o.inventory[i.name] = i
-		return nil
-	} else {
-		return ErrAlreadyExists
-	}
-}
-
 func main() {
 	/*
 		в этой функции можно ничего не писать,
@@ -79,28 +17,122 @@ func main() {
 	_ = handleCommand("some command")
 }
 
+func initGame() {
+	c = &CLI{
+		route: NewAction(&ConfigAction{}),
+		codec: NewCodec(ConfigCodec{}),
+	}
+}
+
 /*
  * CLI LAYER
  *
  * Responsible for user
- * input and game output.
+ * input and game output,
+ * routing and validation.
  */
+
+// Errors
+
+var (
+	ErrUnknown        = errors.New("неизвестная ошибка")
+	ErrCommandEmpty   = errors.New("команда не предоставлена")
+	ErrUnknownCommand = errors.New("неизвестная команда")
+)
+
+// Command Object
+
+type Command struct {
+	name string
+	args []string
+}
+
+// Result Object
+
+type Result struct {
+	resp string
+}
+
+// CLI the Transport Master
 
 var c *CLI
 
-type Parser interface {
-	Unparse(command string) []string
+type Router interface {
+	PickHandler(route string) (func(c Command) Result, error)
+}
+
+type Serializer interface {
+	Unparse(command string) ([]string, error)
 }
 
 type CLI struct {
-	Parser Parser
+	route Router
+	codec Serializer
 }
 
-func (c *CLI) Accept(command string) []string {
-	return c.Parser.Unparse(command)
+func handleCommand(command string) string {
+	cmd, err := c.codec.Unparse(command)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrNoCommand):
+			return ErrCommandEmpty.Error()
+		default:
+			return ErrUnknown.Error()
+		}
+	}
+
+	handler, err := c.route.PickHandler(cmd[0])
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrNoRoute):
+			return ErrUnknownCommand.Error()
+		default:
+			return ErrUnknown.Error()
+		}
+	}
+
+	c := Command{
+		name: cmd[0],
+		args: cmd[1:],
+	}
+
+	return handler(c).resp
+}
+
+// Action the Router
+
+var (
+	ErrNoRoute = errors.New("no route")
+)
+
+type ConfigAction struct {
+	Commands map[string]func(c Command) Result
+}
+
+type Action struct {
+	c map[string]func(c Command) Result
+}
+
+func NewAction(c *ConfigAction) *Action {
+	return &Action{
+		c: c.Commands,
+	}
+}
+
+func (a *Action) PickHandler(route string) (func(c Command) Result, error) {
+	handler, ok := a.c[route]
+	if !ok {
+		return nil, ErrNoRoute
+	}
+
+	return handler, nil
 }
 
 // Codec the Input Parser
+
+var (
+	ErrNoCommand = errors.New("no command")
+)
 
 type ConfigCodec struct{}
 
@@ -110,18 +142,11 @@ func NewCodec(c ConfigCodec) Codec {
 	return Codec{}
 }
 
-func (c Codec) Unparse(command string) []string {
-	return strings.Split(command, " ")
-}
+func (c Codec) Unparse(command string) ([]string, error) {
+	cmd := strings.Split(command, " ")
+	if len(cmd) < 1 {
+		return nil, ErrNoCommand
+	}
 
-func initGame() {
-	c = &CLI{}
-}
-
-func handleCommand(command string) string {
-	/*
-		данная функция принимает команду от "пользователя"
-		и наверняка вызывает какой-то другой метод или функцию у "мира" - списка комнат
-	*/
-	return "not implemented"
+	return cmd, nil
 }
