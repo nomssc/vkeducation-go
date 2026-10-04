@@ -1,0 +1,94 @@
+package main
+
+import "errors"
+
+/*
+ * CLI PACKAGE
+ *
+ * Backend backbone.
+ */
+
+// Errors
+
+var (
+	ErrUnknown        = errors.New("неизвестная ошибка")
+	ErrCommandEmpty   = errors.New("команда не предоставлена")
+	ErrUnknownCommand = errors.New("неизвестная команда")
+)
+
+// Command Object
+
+type Command struct {
+	name string
+	args []string
+}
+
+// Result Object
+
+type Result struct {
+	resp string
+}
+
+// CLI the Transport Master
+
+var cli *CLI
+
+type ConfigCLI struct {
+	Route Router
+	Codec Codec
+}
+
+type Router interface {
+	Handle(route string, h Handler)
+	Handler(c *Command) (Handler, error)
+}
+
+type Serializer interface {
+	UnparseCommandString(command string) ([]string, error)
+}
+
+type CLI struct {
+	route Router
+	codec Serializer
+}
+
+func NewCLI(c *ConfigCLI) *CLI {
+	return &CLI{
+		route: c.Route,
+		codec: c.Codec,
+	}
+}
+
+func handleCommand(command string) string {
+	cmd, err := cli.codec.UnparseCommandString(command)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrNoCommand):
+			return ErrCommandEmpty.Error()
+		default:
+			return ErrUnknown.Error()
+		}
+	}
+
+	c := &Command{
+		name: cmd[0],
+		args: cmd[1:],
+	}
+
+	h, err := cli.route.Handler(c)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrNoRoute):
+			return ErrUnknownCommand.Error()
+		default:
+			return ErrUnknown.Error()
+		}
+	}
+
+	result, err := h(c)
+	if err != nil {
+		return err.Error()
+	} else {
+		return result.resp
+	}
+}
