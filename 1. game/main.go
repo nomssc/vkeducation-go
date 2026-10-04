@@ -7,29 +7,142 @@ import (
 )
 
 func main() {
-	/*
-		в этой функции можно ничего не писать,
-		но тогда у вас не будет работать через go run main.go
-		очень круто будет сделать построчный ввод команд тут, хотя это и не требуется по заданию
-	*/
-
 	initGame()
 
-	_ = handleCommand("завтракать")
+	fmt.Println()
+	fmt.Println(world.Rooms[world.Player.Position].Inventory)
+	fmt.Println(world.Player.Inventory)
+
+	res := handleCommand("взять ключи")
+
+	fmt.Println()
+	fmt.Println(world.Rooms[world.Player.Position].Inventory)
+	fmt.Println(world.Player.Inventory)
+
+	fmt.Println(res)
+
+	res = handleCommand("взять конспекты")
+
+	fmt.Println()
+	fmt.Println(world.Rooms[world.Player.Position].Inventory)
+	fmt.Println(world.Player.Inventory)
+	fmt.Println()
+
+	fmt.Println(res)
 }
 
 func initGame() {
-	cli = NewCLI(&ConfigCLI{
-		&CLI{
+	var (
+		ItemKeys     Item = "ключи"
+		ItemWriting  Item = "конспекты"
+		ItemBackpack Item = "рюкзак"
+		ItemTea      Item = "чай"
+	)
+
+	var (
+		FurnitureTable Furniture = "стол"
+		FurnitureChair Furniture = "стул"
+	)
+
+	var (
+		RoomNameKitchen = "кухня"
+		RoomNameHallway = "коридор"
+		RoomNameBedroom = "комната"
+		RoomNameStreet  = "улица"
+		RoomNameHome    = "дом"
+	)
+
+	var (
+		RoomKitchen Room = Room{
+			Name: RoomNameKitchen,
+			Inventory: map[Furniture]map[Item]struct{}{
+				FurnitureTable: map[Item]struct{}{
+					ItemTea: struct{}{},
+				},
+			},
+			Gateways: map[string]struct{}{
+				RoomNameHallway: struct{}{},
+			},
+		}
+		RoomHallway Room = Room{
+			Name:      RoomNameHallway,
+			Inventory: map[Furniture]map[Item]struct{}{},
+			Gateways: map[string]struct{}{
+				RoomNameBedroom: struct{}{},
+				RoomNameKitchen: struct{}{},
+				RoomNameStreet:  struct{}{},
+			},
+		}
+		RoomBedroom Room = Room{
+			Name: RoomNameBedroom,
+			Inventory: map[Furniture]map[Item]struct{}{
+				FurnitureTable: map[Item]struct{}{
+					ItemKeys:    struct{}{},
+					ItemWriting: struct{}{},
+				},
+				FurnitureChair: map[Item]struct{}{
+					ItemBackpack: struct{}{},
+				},
+			},
+			Gateways: map[string]struct{}{
+				RoomNameHallway: struct{}{},
+			},
+		}
+		RoomStreet Room = Room{
+			Name:      RoomNameStreet,
+			Inventory: map[Furniture]map[Item]struct{}{},
+			Gateways: map[string]struct{}{
+				RoomNameHome: struct{}{},
+			},
+		}
+		RoomHome Room = Room{
+			Name:      RoomNameHome,
+			Inventory: map[Furniture]map[Item]struct{}{},
+			Gateways:  map[string]struct{}{},
+		}
+	)
+
+	world = NewWorld(ConfigWorld{
+		World{
+			Player: &Player{
+				Inventory:          map[Item]struct{}{},
+				InventoryAvailable: true,
+				Position:           RoomNameBedroom,
+			},
+
+			Items: map[Item]struct{}{
+				ItemKeys:     struct{}{},
+				ItemWriting:  struct{}{},
+				ItemBackpack: struct{}{},
+				ItemTea:      struct{}{},
+			},
+			Furniture: map[Furniture]struct{}{
+				FurnitureTable: struct{}{},
+				FurnitureChair: struct{}{},
+			},
+			Rooms: map[string]*Room{
+				RoomNameKitchen: &RoomKitchen,
+				RoomNameHallway: &RoomHallway,
+				RoomNameBedroom: &RoomBedroom,
+				RoomNameStreet:  &RoomStreet,
+				RoomNameHome:    &RoomHome,
+			},
+		},
+	})
+
+	cli = NewCLI(ConfigCLI{
+		CLI{
 			Mux:   NewMux(),
 			Codec: NewCodec(),
 		},
 	})
 
+	take := &TakeTransport{Usecase: &TakeUsecase{World: world}, AgrumentsCount: 1}
+
 	cli.Handle("осмотреться", nil)
 	cli.Handle("идти", nil)
 	cli.Handle("применить", nil)
-	cli.Handle("взять", nil)
+	cli.Handle("взять", take.Handler)
 	cli.Handle("надеть", nil)
 }
 
@@ -41,9 +154,65 @@ func initGame() {
  * routing and validation.
  */
 
-type TakeTransport struct{}
+var (
+	ErrTransportUnexpectedStuff            = errors.New("неожиданная ошибка")
+	ErrTransportIncorrectNumberOfArguments = errors.New("некорректное количество аргументов")
+	ErrTransportInventoryNotAvailable      = errors.New("некуда класть")
+	ErrTransportItemAlreadyInTheInventory  = errors.New("предмет уже в инвентаре")
+	ErrTransportItemDoesNotExists          = errors.New("нет такого")
+	ErrTransportItemIsNotInTheInventory    = errors.New("нет такого")
+)
 
-func (h *TakeTransport) Handler(r Request, w *ResponseWriter) {
+var (
+	MsgTransportItemPlacedInTheInventory = "предмет добавлен в инвентарь"
+)
+
+type TakeUsecaser interface {
+	Take(name string) error
+}
+
+type TakeTransport struct {
+	Usecase TakeUsecaser
+
+	AgrumentsCount int
+}
+
+func (t *TakeTransport) Handler(r Request, w *ResponseWriter) {
+	if !validateArgumentsCount(r.Args(), t.AgrumentsCount) {
+		w.Error(ErrTransportIncorrectNumberOfArguments)
+		return
+	}
+
+	err := t.Usecase.Take(r.Args()[0])
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrWorldInventoryNotAvailable):
+			w.Error(ErrTransportInventoryNotAvailable)
+			return
+		case errors.Is(err, ErrWorldItemAlreadyInTheInventory):
+			w.Error(ErrTransportItemAlreadyInTheInventory)
+			return
+		case errors.Is(err, ErrWorldItemDoesNotExists):
+			w.Error(ErrTransportItemDoesNotExists)
+			return
+		case errors.Is(err, ErrWorldItemIsNotInTheInventory):
+			w.Error(ErrTransportItemIsNotInTheInventory)
+			return
+		default:
+			w.Error(ErrTransportUnexpectedStuff)
+			return
+		}
+	}
+
+	w.Write(fmt.Sprintf("%s: %s", MsgTransportItemPlacedInTheInventory, r.Args()[0]))
+}
+
+func validateArgumentsCount(args []string, expectedCount int) bool {
+	if len(args) != expectedCount {
+		return false
+	}
+
+	return true
 }
 
 /*
@@ -51,6 +220,134 @@ func (h *TakeTransport) Handler(r Request, w *ResponseWriter) {
  *
  * Processes business logic.
  */
+
+type TakeUsecase struct {
+	World *World
+}
+
+func (u *TakeUsecase) Take(name string) error {
+	err := u.World.CheckItem(name)
+	if err != nil {
+		return err
+	}
+
+	position := u.World.Player.CurrentPosition()
+
+	err = u.World.Rooms[position].TakeFromTheInventory(name)
+	if err != nil {
+		return err
+	}
+
+	err = u.World.Player.InventoryStatus()
+	if err != nil {
+		return err
+	}
+
+	err = u.World.Player.PlaceInTheInventory(name)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+/*
+ * WORLD LAYER
+ *
+ * Acts as database for world
+ * resources.
+ */
+
+var (
+	ErrWorldInventoryNotAvailable     = errors.New("no inventory")
+	ErrWorldItemAlreadyInTheInventory = errors.New("item already in the inventory")
+	ErrWorldItemDoesNotExists         = errors.New("item does not exists")
+	ErrWorldItemIsNotInTheInventory   = errors.New("item is not the inventory")
+)
+
+var world *World
+
+type ConfigWorld struct {
+	World
+}
+
+type Item string
+
+type Furniture string
+
+type Room struct {
+	Name      string
+	Inventory map[Furniture]map[Item]struct{}
+	Gateways  map[string]struct{}
+}
+
+func (r *Room) TakeFromTheInventory(name string) error {
+	for _, furniture := range r.Inventory {
+		_, ok := furniture[Item(name)]
+		if ok {
+			delete(furniture, Item(name))
+			return nil
+		}
+	}
+
+	return ErrWorldItemIsNotInTheInventory
+}
+
+type Player struct {
+	Inventory          map[Item]struct{}
+	InventoryAvailable bool
+	Position           string
+}
+
+func (p *Player) InventoryStatus() error {
+	if !p.InventoryAvailable {
+		return ErrWorldInventoryNotAvailable
+	}
+
+	return nil
+}
+
+func (p *Player) CurrentPosition() string {
+	return p.Position
+}
+
+func (p *Player) PlaceInTheInventory(name string) error {
+	_, ok := p.Inventory[Item(name)]
+	if ok {
+		return ErrWorldItemAlreadyInTheInventory
+	}
+
+	p.Inventory[Item(name)] = struct{}{}
+
+	return nil
+}
+
+type World struct {
+	Player *Player
+
+	Items     map[Item]struct{}
+	Furniture map[Furniture]struct{}
+	Rooms     map[string]*Room
+}
+
+func NewWorld(c ConfigWorld) *World {
+	return &World{
+		Player: c.World.Player,
+
+		Items:     c.World.Items,
+		Furniture: c.World.Furniture,
+		Rooms:     c.World.Rooms,
+	}
+}
+
+func (w *World) CheckItem(name string) error {
+	_, ok := w.Items[Item(name)]
+	if !ok {
+		return ErrWorldItemDoesNotExists
+	}
+
+	return nil
+}
 
 /*
  * CLI PACKAGE
@@ -95,8 +392,8 @@ func (r *ResponseWriter) Write(s string) {
 	r.message = s
 }
 
-func (r *ResponseWriter) Error(s string) {
-	r.error = fmt.Errorf(s)
+func (r *ResponseWriter) Error(e error) {
+	r.error = e
 }
 
 // Handler type.
@@ -105,7 +402,7 @@ type Handler func(r Request, w *ResponseWriter)
 // Used to configurate CLI on
 // inititalization.
 type ConfigCLI struct {
-	*CLI
+	CLI
 }
 
 type Router interface {
@@ -125,7 +422,7 @@ type CLI struct {
 	Codec Interpreter
 }
 
-func NewCLI(c *ConfigCLI) *CLI {
+func NewCLI(c ConfigCLI) *CLI {
 	return &CLI{
 		Mux:   c.CLI.Mux,
 		Codec: c.CLI.Codec,
@@ -161,6 +458,7 @@ func handleCommand(command string) string {
 	w := &ResponseWriter{}
 
 	h(r, w)
+
 	if w.error != nil {
 		return w.error.Error()
 	} else {
@@ -190,7 +488,7 @@ type Mux struct {
 	handlers map[string]Handler
 }
 
-func NewMux(c ...*ConfigMux) *Mux {
+func NewMux(c ...ConfigMux) *Mux {
 	return &Mux{
 		handlers: make(map[string]Handler),
 	}
