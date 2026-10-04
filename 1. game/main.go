@@ -41,6 +41,11 @@ func initGame() {
  * routing and validation.
  */
 
+type TakeTransport struct{}
+
+func (h *TakeTransport) Handler(r Request, w *ResponseWriter) {
+}
+
 /*
  * SERVICE LAYER
  *
@@ -83,20 +88,19 @@ func (c Request) Args() []string {
 // write errors.
 type ResponseWriter struct {
 	message string
+	error   error
 }
 
-func (r *ResponseWriter) Write(s string) error {
+func (r *ResponseWriter) Write(s string) {
 	r.message = s
-
-	return nil
 }
 
-func (r *ResponseWriter) Error(s string) error {
-	return fmt.Errorf("%v", s)
+func (r *ResponseWriter) Error(s string) {
+	r.error = fmt.Errorf(s)
 }
 
 // Handler type.
-type Handler func(r Request, w *ResponseWriter) error
+type Handler func(r Request, w *ResponseWriter)
 
 // Used to configurate CLI on
 // inititalization.
@@ -156,9 +160,9 @@ func handleCommand(command string) string {
 
 	w := &ResponseWriter{}
 
-	err = h(r, w)
-	if err != nil {
-		return err.Error()
+	h(r, w)
+	if w.error != nil {
+		return w.error.Error()
 	} else {
 		return w.message
 	}
