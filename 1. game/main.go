@@ -9,123 +9,150 @@ import (
 func main() {
 	initGame()
 
-	fmt.Println()
-	fmt.Println(world.Rooms[world.Player.Position].Inventory)
-	fmt.Println(world.Player.Inventory)
-
-	res := handleCommand("взять ключи")
-
-	fmt.Println()
-	fmt.Println(world.Rooms[world.Player.Position].Inventory)
-	fmt.Println(world.Player.Inventory)
-
-	fmt.Println(res)
-
-	res = handleCommand("взять конспекты")
-
-	fmt.Println()
-	fmt.Println(world.Rooms[world.Player.Position].Inventory)
-	fmt.Println(world.Player.Inventory)
-	fmt.Println()
-
-	fmt.Println(res)
+	_ = handleCommand("")
 }
 
 func initGame() {
 	var (
-		ItemKeys     Item = "ключи"
-		ItemWriting  Item = "конспекты"
-		ItemBackpack Item = "рюкзак"
-		ItemTea      Item = "чай"
+		ItemKeys = Item{
+			Name: "ключи",
+
+			OpenDoors: true,
+			PutOn:     false,
+			Carry:     true,
+		}
+		ItemWriting = Item{
+			Name: "конспекты",
+
+			OpenDoors: false,
+			PutOn:     false,
+			Carry:     true,
+		}
+		ItemBackpack = Item{
+			Name: "рюкзак",
+
+			OpenDoors: false,
+			PutOn:     true,
+			Carry:     false,
+		}
+		ItemTea = Item{
+			Name: "чай",
+
+			OpenDoors: false,
+			PutOn:     true,
+			Carry:     false,
+		}
 	)
 
 	var (
-		FurnitureTable Furniture = "стол"
-		FurnitureChair Furniture = "стул"
+		FurnitureTable = "стол"
+		FurnitureChair = "стул"
 	)
 
 	var (
-		RoomNameKitchen = "кухня"
-		RoomNameHallway = "коридор"
-		RoomNameBedroom = "комната"
-		RoomNameStreet  = "улица"
-		RoomNameHome    = "дом"
+		DoorStreet = Door{
+			Name:   "дверь на улицу",
+			Status: false,
+
+			OpenedWith: ItemKeys.Name,
+		}
 	)
 
 	var (
-		RoomKitchen Room = Room{
+		RoomNameKitchen         = "кухня"
+		RoomEntryWelcomeKitchen = "кухня, ничего интересного"
+		RoomNameHallway         = "коридор"
+		RoomEntryWelcomeHallway = "ничего интересного"
+		RoomNameBedroom         = "комната"
+		RoomEntryWelcomeBedroom = "ты в своей комнате"
+		RoomNameStreet          = "улица"
+		RoomEntryWelcomeStreet  = "на улице весна"
+		RoomNameHome            = "домой"
+		RoomEntryWelcomeHome    = ""
+	)
+
+	var (
+		RoomKitchen = Room{
 			Name: RoomNameKitchen,
-			Inventory: map[Furniture]map[Item]struct{}{
-				FurnitureTable: map[Item]struct{}{
-					ItemTea: struct{}{},
+			Inventory: map[string]map[string]struct{}{
+				FurnitureTable: map[string]struct{}{
+					ItemTea.Name: struct{}{},
 				},
 			},
-			Gateways: map[string]struct{}{
-				RoomNameHallway: struct{}{},
-			},
+			Door:     "",
+			Gateways: []string{RoomNameHallway},
+
+			EntryWelcome: RoomEntryWelcomeKitchen,
 		}
-		RoomHallway Room = Room{
+		RoomHallway = Room{
 			Name:      RoomNameHallway,
-			Inventory: map[Furniture]map[Item]struct{}{},
-			Gateways: map[string]struct{}{
-				RoomNameBedroom: struct{}{},
-				RoomNameKitchen: struct{}{},
-				RoomNameStreet:  struct{}{},
-			},
+			Inventory: map[string]map[string]struct{}{},
+			Door:      "",
+			Gateways:  []string{RoomNameKitchen, RoomNameBedroom, RoomNameStreet},
+
+			EntryWelcome: RoomEntryWelcomeHallway,
 		}
-		RoomBedroom Room = Room{
+		RoomBedroom = Room{
 			Name: RoomNameBedroom,
-			Inventory: map[Furniture]map[Item]struct{}{
-				FurnitureTable: map[Item]struct{}{
-					ItemKeys:    struct{}{},
-					ItemWriting: struct{}{},
+			Inventory: map[string]map[string]struct{}{
+				FurnitureTable: map[string]struct{}{
+					ItemKeys.Name:    struct{}{},
+					ItemWriting.Name: struct{}{},
 				},
-				FurnitureChair: map[Item]struct{}{
-					ItemBackpack: struct{}{},
+				FurnitureChair: map[string]struct{}{
+					ItemBackpack.Name: struct{}{},
 				},
 			},
-			Gateways: map[string]struct{}{
-				RoomNameHallway: struct{}{},
-			},
+			Door:     "",
+			Gateways: []string{RoomNameHallway},
+
+			EntryWelcome: RoomEntryWelcomeBedroom,
 		}
-		RoomStreet Room = Room{
+		RoomStreet = Room{
 			Name:      RoomNameStreet,
-			Inventory: map[Furniture]map[Item]struct{}{},
-			Gateways: map[string]struct{}{
-				RoomNameHome: struct{}{},
-			},
+			Inventory: map[string]map[string]struct{}{},
+			Door:      DoorStreet.Name,
+			Gateways:  []string{RoomNameHome},
+
+			EntryWelcome: RoomEntryWelcomeStreet,
 		}
-		RoomHome Room = Room{
+		RoomHome = Room{
 			Name:      RoomNameHome,
-			Inventory: map[Furniture]map[Item]struct{}{},
-			Gateways:  map[string]struct{}{},
+			Inventory: map[string]map[string]struct{}{},
+			Door:      "",
+			Gateways:  []string{},
+
+			EntryWelcome: RoomEntryWelcomeHome,
 		}
 	)
+
+	var Player = &Player{
+		Name:      "@nomssc",
+		Inventory: map[string]struct{}{},
+		Clothes:   map[string]struct{}{},
+		Position:  RoomNameKitchen,
+
+		InventoryAvailable: false,
+	}
 
 	world = NewWorld(ConfigWorld{
 		World{
-			Player: &Player{
-				Inventory:          map[Item]struct{}{},
-				InventoryAvailable: true,
-				Position:           RoomNameBedroom,
+			Player: Player,
+			Items: map[string]Item{
+				ItemKeys.Name:     ItemKeys,
+				ItemWriting.Name:  ItemWriting,
+				ItemBackpack.Name: ItemBackpack,
+				ItemTea.Name:      ItemTea,
 			},
-
-			Items: map[Item]struct{}{
-				ItemKeys:     struct{}{},
-				ItemWriting:  struct{}{},
-				ItemBackpack: struct{}{},
-				ItemTea:      struct{}{},
-			},
-			Furniture: map[Furniture]struct{}{
-				FurnitureTable: struct{}{},
-				FurnitureChair: struct{}{},
+			Doors: map[string]*Door{
+				DoorStreet.Name: &DoorStreet,
 			},
 			Rooms: map[string]*Room{
-				RoomNameKitchen: &RoomKitchen,
-				RoomNameHallway: &RoomHallway,
-				RoomNameBedroom: &RoomBedroom,
-				RoomNameStreet:  &RoomStreet,
-				RoomNameHome:    &RoomHome,
+				RoomKitchen.Name: &RoomKitchen,
+				RoomHallway.Name: &RoomHallway,
+				RoomBedroom.Name: &RoomBedroom,
+				RoomStreet.Name:  &RoomStreet,
+				RoomHome.Name:    &RoomHome,
 			},
 		},
 	})
@@ -137,13 +164,15 @@ func initGame() {
 		},
 	})
 
+	walk := &WalkTransport{Usecase: &WalkUsecase{World: world}, AgrumentsCount: 1}
 	take := &TakeTransport{Usecase: &TakeUsecase{World: world}, AgrumentsCount: 1}
+	putOn := &PutOnTransport{Usecase: &PutOnUsecase{World: world}, AgrumentsCount: 1}
 
-	cli.Handle("осмотреться", nil)
-	cli.Handle("идти", nil)
-	cli.Handle("применить", nil)
+	//cli.Handle("осмотреться", nil)
+	cli.Handle("идти", walk.Handler)
+	//cli.Handle("применить", nil)
 	cli.Handle("взять", take.Handler)
-	cli.Handle("надеть", nil)
+	cli.Handle("надеть", putOn.Handler)
 }
 
 /*
@@ -158,21 +187,59 @@ var (
 	ErrTransportUnexpectedStuff            = errors.New("неожиданная ошибка")
 	ErrTransportIncorrectNumberOfArguments = errors.New("некорректное количество аргументов")
 	ErrTransportInventoryNotAvailable      = errors.New("некуда класть")
-	ErrTransportItemAlreadyInTheInventory  = errors.New("предмет уже в инвентаре")
-	ErrTransportItemDoesNotExists          = errors.New("нет такого")
 	ErrTransportItemIsNotInTheInventory    = errors.New("нет такого")
+	ErrTransportNoGateway                  = errors.New("нет пути")
+	ErrTransportDoorIsClosed               = errors.New("дверь закрыта")
+	ErrTransportRoomDoesNotExists          = errors.New("комната не существует")
+	ErrTransportDoorDoesNotExists          = errors.New("дверь не существует")
+	ErrTransportItemDoesNotExists          = errors.New("нет такого")
+	ErrTransportItemCantBeCarried          = errors.New("предмет нельзя положить в инвентарь")
+	ErrTransportItemAlreadyInTheInventory  = errors.New("предмент уже есть в инвентаре")
+	ErrTransportItemCantBePutOn            = errors.New("предмет нельзя надеть")
+	ErrTransportItemAlreadyPutOn           = errors.New("предмет уже надет")
 )
 
-var (
-	MsgTransportItemPlacedInTheInventory = "предмет добавлен в инвентарь"
-)
+type PutOnTransport struct {
+	Usecase *PutOnUsecase
 
-type TakeUsecaser interface {
-	Take(name string) error
+	AgrumentsCount int
+}
+
+func (t *PutOnTransport) Handler(r Request, w *ResponseWriter) {
+	if !validateArgumentsCount(r.Args(), t.AgrumentsCount) {
+		w.Error(ErrTransportIncorrectNumberOfArguments)
+		return
+	}
+
+	err := t.Usecase.PutOn(r.Args()[0])
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrServiceItemDoesNotExists):
+			w.Error(ErrTransportItemDoesNotExists)
+			return
+		case errors.Is(err, ErrServiceItemCantBePutOn):
+			w.Error(ErrTransportItemCantBePutOn)
+			return
+		case errors.Is(err, ErrServiceRoomDoesNotExists):
+			w.Error(fmt.Errorf("%w", ErrTransportRoomDoesNotExists))
+			return
+		case errors.Is(err, ErrServiceItemAlreadyPutOn):
+			w.Error(ErrTransportItemAlreadyPutOn)
+			return
+		case errors.Is(err, ErrServiceItemIsNotInTheInventory):
+			w.Error(ErrTransportItemIsNotInTheInventory)
+			return
+		default:
+			w.Error(ErrTransportUnexpectedStuff)
+			return
+		}
+	}
+
+	w.Write(fmt.Sprintf("вы надели: %s", r.Args()[0]))
 }
 
 type TakeTransport struct {
-	Usecase TakeUsecaser
+	Usecase *TakeUsecase
 
 	AgrumentsCount int
 }
@@ -186,17 +253,23 @@ func (t *TakeTransport) Handler(r Request, w *ResponseWriter) {
 	err := t.Usecase.Take(r.Args()[0])
 	if err != nil {
 		switch {
-		case errors.Is(err, ErrWorldInventoryNotAvailable):
+		case errors.Is(err, ErrServiceRoomDoesNotExists):
+			w.Error(fmt.Errorf("%w", ErrTransportRoomDoesNotExists))
+			return
+		case errors.Is(err, ErrServiceInventoryNotAvailable):
 			w.Error(ErrTransportInventoryNotAvailable)
 			return
-		case errors.Is(err, ErrWorldItemAlreadyInTheInventory):
-			w.Error(ErrTransportItemAlreadyInTheInventory)
+		case errors.Is(err, ErrServiceItemIsNotInTheInventory):
+			w.Error(ErrTransportItemIsNotInTheInventory)
 			return
-		case errors.Is(err, ErrWorldItemDoesNotExists):
+		case errors.Is(err, ErrServiceItemDoesNotExists):
 			w.Error(ErrTransportItemDoesNotExists)
 			return
-		case errors.Is(err, ErrWorldItemIsNotInTheInventory):
-			w.Error(ErrTransportItemIsNotInTheInventory)
+		case errors.Is(err, ErrServiceItemCantBeCarried):
+			w.Error(ErrTransportItemCantBeCarried)
+			return
+		case errors.Is(err, ErrServiceItemAlreadyInTheInventory):
+			w.Error(ErrTransportItemAlreadyInTheInventory)
 			return
 		default:
 			w.Error(ErrTransportUnexpectedStuff)
@@ -204,7 +277,46 @@ func (t *TakeTransport) Handler(r Request, w *ResponseWriter) {
 		}
 	}
 
-	w.Write(fmt.Sprintf("%s: %s", MsgTransportItemPlacedInTheInventory, r.Args()[0]))
+	w.Write(fmt.Sprintf("предмет добавлен в инвентарь: %s", r.Args()[0]))
+}
+
+type WalkTransport struct {
+	Usecase *WalkUsecase
+
+	AgrumentsCount int
+}
+
+func (t *WalkTransport) Handler(r Request, w *ResponseWriter) {
+	if !validateArgumentsCount(r.Args(), t.AgrumentsCount) {
+		w.Error(ErrTransportIncorrectNumberOfArguments)
+		return
+	}
+
+	entryWelcome, gateways, err := t.Usecase.Walk(r.Args()[0])
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrServiceRoomDoesNotExists):
+			w.Error(fmt.Errorf("%w", ErrTransportRoomDoesNotExists))
+			return
+		case errors.Is(err, ErrServiceNoGateway):
+			w.Error(fmt.Errorf("%w в %s", ErrTransportNoGateway, r.Args()[0]))
+			return
+		case errors.Is(err, ErrServiceNoGateway):
+			w.Error(fmt.Errorf("%w", ErrTransportDoorIsClosed))
+			return
+		case errors.Is(err, ErrServiceDoorDoesNotExists):
+			w.Error(fmt.Errorf("%w", ErrTransportDoorDoesNotExists))
+			return
+		case errors.Is(err, ErrServiceDoorIsClosed):
+			w.Error(fmt.Errorf("%w", ErrTransportDoorIsClosed))
+			return
+		default:
+			w.Error(ErrTransportUnexpectedStuff)
+			return
+		}
+	}
+
+	w.Write(fmt.Sprintf("%s. можно пройти - %s", entryWelcome, gateways))
 }
 
 func validateArgumentsCount(args []string, expectedCount int) bool {
@@ -221,34 +333,138 @@ func validateArgumentsCount(args []string, expectedCount int) bool {
  * Processes business logic.
  */
 
+var (
+	ErrServiceNoGateway                 = errors.New("no gateway")
+	ErrServiceDoorDoesNotExists         = errors.New("door does not exists")
+	ErrServiceRoomDoesNotExists         = errors.New("room does not exists")
+	ErrServiceItemDoesNotExists         = errors.New("item does not exists")
+	ErrServiceInventoryNotAvailable     = errors.New("inventory not available")
+	ErrServiceDoorIsClosed              = errors.New("door is closed")
+	ErrServiceItemAlreadyInTheInventory = errors.New("item already in the inventory")
+	ErrServiceItemIsNotInTheInventory   = errors.New("item is not the inventory")
+	ErrServiceItemAlreadyPutOn          = errors.New("item already put on")
+	ErrServiceItemCantBeCarried         = errors.New("item can't be carried")
+	ErrServiceItemCantBePutOn           = errors.New("item can't be put on")
+)
+
+type PutOnUsecase struct {
+	World *World
+}
+
+func (u *PutOnUsecase) PutOn(itemName string) error {
+	items := u.World.GetItems()
+	item, ok := items[itemName]
+	if !ok {
+		return ErrServiceItemDoesNotExists
+	}
+	if !item.GetPutOn() {
+		return ErrServiceItemCantBePutOn
+	}
+
+	roomName := u.World.Player.GetPosition()
+	rooms := u.World.GetRooms()
+	room, ok := rooms[roomName]
+	if !ok {
+		return ErrServiceRoomDoesNotExists
+	}
+
+	clothes := u.World.Player.GetClothes()
+	_, ok = clothes[itemName]
+	if ok {
+		return ErrServiceItemAlreadyPutOn
+	}
+
+	err := room.RemoveItem(itemName)
+	if err != nil {
+		return ErrServiceItemIsNotInTheInventory
+	}
+	u.World.Player.StoreWear(itemName)
+	u.World.Player.ChangeInventoryAvailability(true)
+
+	return nil
+}
+
 type TakeUsecase struct {
 	World *World
 }
 
-func (u *TakeUsecase) Take(name string) error {
-	err := u.World.CheckItem(name)
-	if err != nil {
-		return err
+func (u *TakeUsecase) Take(itemName string) error {
+	items := u.World.GetItems()
+	item, ok := items[itemName]
+	if !ok {
+		return ErrServiceItemDoesNotExists
+	}
+	if !item.GetCarry() {
+		return ErrServiceItemCantBeCarried
 	}
 
-	position := u.World.Player.CurrentPosition()
-
-	err = u.World.Rooms[position].TakeFromTheInventory(name)
-	if err != nil {
-		return err
+	roomName := u.World.Player.GetPosition()
+	rooms := u.World.GetRooms()
+	room, ok := rooms[roomName]
+	if !ok {
+		return ErrServiceRoomDoesNotExists
 	}
 
-	err = u.World.Player.InventoryStatus()
-	if err != nil {
-		return err
+	if !u.World.Player.GetInventoryAvailable() {
+		return ErrServiceInventoryNotAvailable
 	}
 
-	err = u.World.Player.PlaceInTheInventory(name)
+	err := room.RemoveItem(itemName)
 	if err != nil {
-		return err
+		return ErrServiceItemIsNotInTheInventory
 	}
+
+	inventory := u.World.Player.GetInventory()
+	_, ok = inventory[itemName]
+	if ok {
+		return ErrServiceItemAlreadyInTheInventory
+	}
+
+	u.World.Player.StoreItem(itemName)
 
 	return nil
+}
+
+type WalkUsecase struct {
+	World *World
+}
+
+func (u *WalkUsecase) Walk(direction string) (string, string, error) {
+	roomName := u.World.Player.GetPosition()
+
+	rooms := u.World.GetRooms()
+	currentRoom, ok := rooms[roomName]
+	if !ok {
+		return "", "", ErrServiceRoomDoesNotExists
+	}
+	gateways := currentRoom.GetGateways()
+	exists := false
+	for _, gateway := range gateways {
+		if gateway == direction {
+			exists = true
+		}
+	}
+	if !exists {
+		return "", "", ErrServiceNoGateway
+	}
+
+	nextRoom, ok := rooms[direction]
+	if !ok {
+		return "", "", ErrServiceRoomDoesNotExists
+	}
+	doorName := nextRoom.Door
+	doors := u.World.GetDoors()
+	door, ok := doors[doorName]
+	if ok && !door.GetDoorStatus() {
+		return "", "", ErrServiceDoorIsClosed
+	}
+
+	u.World.Player.ChangePosition(nextRoom.Name)
+
+	gateways = nextRoom.GetGateways()
+	gatewaysStr := strings.Join(gateways, ", ")
+
+	return nextRoom.EntryWelcome, gatewaysStr, nil
 }
 
 /*
@@ -258,95 +474,161 @@ func (u *TakeUsecase) Take(name string) error {
  * resources.
  */
 
-var (
-	ErrWorldInventoryNotAvailable     = errors.New("no inventory")
-	ErrWorldItemAlreadyInTheInventory = errors.New("item already in the inventory")
-	ErrWorldItemDoesNotExists         = errors.New("item does not exists")
-	ErrWorldItemIsNotInTheInventory   = errors.New("item is not the inventory")
-)
-
 var world *World
 
 type ConfigWorld struct {
 	World
 }
 
-type Item string
+type World struct {
+	Player *Player
 
-type Furniture string
+	Items map[string]Item
+	Doors map[string]*Door
+	Rooms map[string]*Room
+}
+
+type Player struct {
+	Name      string
+	Inventory map[string]struct{}
+	Clothes   map[string]struct{}
+	Position  string
+
+	InventoryAvailable bool
+}
+
+func (p *Player) GetName() string {
+	return p.Name
+}
+
+func (p *Player) GetInventory() map[string]struct{} {
+	return p.Inventory
+}
+
+func (p *Player) StoreItem(itemName string) {
+	p.Inventory[itemName] = struct{}{}
+}
+
+func (p *Player) GetClothes() map[string]struct{} {
+	return p.Clothes
+}
+
+func (p *Player) StoreWear(itemName string) {
+	p.Clothes[itemName] = struct{}{}
+}
+
+func (p *Player) GetPosition() string {
+	return p.Position
+}
+
+func (p *Player) ChangePosition(roomName string) {
+	p.Position = roomName
+}
+
+func (p *Player) GetInventoryAvailable() bool {
+	return p.InventoryAvailable
+}
+
+func (p *Player) ChangeInventoryAvailability(value bool) {
+	p.InventoryAvailable = value
+}
+
+type Item struct {
+	Name string
+
+	OpenDoors bool
+	PutOn     bool
+	Carry     bool
+}
+
+func (i Item) GetName() string {
+	return i.Name
+}
+
+func (i Item) GetOpenDoors() bool {
+	return i.OpenDoors
+}
+
+func (i Item) GetPutOn() bool {
+	return i.PutOn
+}
+
+func (i Item) GetCarry() bool {
+	return i.Carry
+}
+
+type Door struct {
+	Name   string
+	Status bool
+
+	OpenedWith string
+}
+
+func (d *Door) GetDoorStatus() bool {
+	return d.Status
+}
+
+func (d *Door) GetOpenedWith() string {
+	return d.OpenedWith
+}
 
 type Room struct {
 	Name      string
-	Inventory map[Furniture]map[Item]struct{}
-	Gateways  map[string]struct{}
+	Inventory map[string]map[string]struct{}
+	Door      string
+	Gateways  []string
+
+	EntryWelcome string
 }
 
-func (r *Room) TakeFromTheInventory(name string) error {
+func (r *Room) GetName() string {
+	return r.Name
+}
+
+func (r *Room) RemoveItem(itemName string) error {
 	for _, furniture := range r.Inventory {
-		_, ok := furniture[Item(name)]
+		_, ok := furniture[itemName]
 		if ok {
-			delete(furniture, Item(name))
+			delete(furniture, itemName)
 			return nil
 		}
 	}
 
-	return ErrWorldItemIsNotInTheInventory
+	return fmt.Errorf("item is not the inventory")
 }
 
-type Player struct {
-	Inventory          map[Item]struct{}
-	InventoryAvailable bool
-	Position           string
+func (r *Room) GetDoor() string {
+	return r.Door
 }
 
-func (p *Player) InventoryStatus() error {
-	if !p.InventoryAvailable {
-		return ErrWorldInventoryNotAvailable
-	}
-
-	return nil
+func (r *Room) GetGateways() []string {
+	return r.Gateways
 }
 
-func (p *Player) CurrentPosition() string {
-	return p.Position
-}
-
-func (p *Player) PlaceInTheInventory(name string) error {
-	_, ok := p.Inventory[Item(name)]
-	if ok {
-		return ErrWorldItemAlreadyInTheInventory
-	}
-
-	p.Inventory[Item(name)] = struct{}{}
-
-	return nil
-}
-
-type World struct {
-	Player *Player
-
-	Items     map[Item]struct{}
-	Furniture map[Furniture]struct{}
-	Rooms     map[string]*Room
+func (r *Room) GetEntryWelcome() string {
+	return r.EntryWelcome
 }
 
 func NewWorld(c ConfigWorld) *World {
 	return &World{
-		Player: c.World.Player,
+		Player: c.Player,
 
-		Items:     c.World.Items,
-		Furniture: c.World.Furniture,
-		Rooms:     c.World.Rooms,
+		Items: c.Items,
+		Doors: c.Doors,
+		Rooms: c.Rooms,
 	}
 }
 
-func (w *World) CheckItem(name string) error {
-	_, ok := w.Items[Item(name)]
-	if !ok {
-		return ErrWorldItemDoesNotExists
-	}
+func (w *World) GetItems() map[string]Item {
+	return w.Items
+}
 
-	return nil
+func (w *World) GetDoors() map[string]*Door {
+	return w.Doors
+}
+
+func (w *World) GetRooms() map[string]*Room {
+	return w.Rooms
 }
 
 /*
@@ -358,7 +640,6 @@ func (w *World) CheckItem(name string) error {
 /* CLI THE TRANSPORT MASTER */
 
 var (
-	ErrCLIUnknown              = errors.New("неизвестная ошибка")
 	ErrCLINoCommand            = errors.New("команда не предоставлена")
 	ErrCLICommandDoesNotExists = errors.New("неизвестная команда")
 )
@@ -432,22 +713,12 @@ func NewCLI(c ConfigCLI) *CLI {
 func handleCommand(command string) string {
 	c, err := cli.Codec.UnparseCommandString(command)
 	if err != nil {
-		switch {
-		case errors.Is(err, ErrCodecNoCommand):
-			return ErrCLINoCommand.Error()
-		default:
-			return ErrCLIUnknown.Error()
-		}
+		return ErrCLINoCommand.Error()
 	}
 
 	h, err := cli.Mux.Process(c[0])
 	if err != nil {
-		switch {
-		case errors.Is(err, ErrMuxCommandDoesNotExists):
-			return ErrCLICommandDoesNotExists.Error()
-		default:
-			return ErrCLIUnknown.Error()
-		}
+		return ErrCLICommandDoesNotExists.Error()
 	}
 
 	r := Request{
@@ -471,10 +742,6 @@ func (c *CLI) Handle(command string, h Handler) {
 }
 
 /* MUX THE ROUTER */
-
-var (
-	ErrMuxCommandDoesNotExists = errors.New("command does not exists")
-)
 
 // Used to configurate Mux on
 // inititalization.
@@ -501,17 +768,13 @@ func (m *Mux) Attach(command string, h Handler) {
 func (m *Mux) Process(command string) (Handler, error) {
 	handler, ok := m.handlers[command]
 	if !ok {
-		return nil, ErrMuxCommandDoesNotExists
+		return nil, fmt.Errorf("command does not exists")
 	}
 
 	return handler, nil
 }
 
 /* CODEC THE INPUT PARSER */
-
-var (
-	ErrCodecNoCommand = errors.New("no command")
-)
 
 // Used to configurate Codec on
 // inititalization.
@@ -530,7 +793,7 @@ func NewCodec(c ...ConfigCodec) Codec {
 func (c Codec) UnparseCommandString(s string) ([]string, error) {
 	command := strings.Split(s, " ")
 	if len(command) < 1 {
-		return nil, ErrCodecNoCommand
+		return nil, fmt.Errorf("no command")
 	}
 
 	return command, nil
