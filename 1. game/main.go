@@ -66,6 +66,7 @@ func initGame() {
 		},
 
 		EntryWelcome: "ничего интересного",
+		EmptyText:    "ничего интересного",
 	}
 	bedroom := &Room{
 		Name: roomNameBedroom,
@@ -76,13 +77,15 @@ func initGame() {
 		Gateways: []Gateway{{Label: roomNameHallway, Room: roomNameHallway}},
 
 		EntryWelcome: "ты в своей комнате",
+		EmptyText:    "пустая комната",
 	}
 	street := &Room{
 		Name:     roomNameStreet,
 		Door:     doorStreet.Name,
-		Gateways: []Gateway{{Label: "домой", Room: roomNameKitchen}},
+		Gateways: []Gateway{{Label: "домой", Room: roomNameHallway}},
 
 		EntryWelcome: "на улице весна",
+		EmptyText:    "на улице весна",
 	}
 
 	player := &Player{
@@ -90,10 +93,9 @@ func initGame() {
 		Inventory: map[string]struct{}{},
 		Clothes:   map[string]struct{}{},
 		Position:  roomNameKitchen,
-		Visited:   map[string]struct{}{roomNameKitchen: {}},
 		Goals: []Goal{
-			{Name: "собрать рюкзак", Items: []string{itemKeys.Name, itemWriting.Name}},
-			{Name: "идти в универ", Rooms: []string{roomNameStreet}},
+			{Name: "собрать рюкзак", Done: func(p *Player) bool { return p.GetInventoryAvailable() }},
+			{Name: "идти в универ"}, // can't be completed in this version of the game
 		},
 	}
 
@@ -158,7 +160,7 @@ func initGame() {
 
 var (
 	ErrTransportUnexpectedStuff            = errors.New("неожиданная ошибка")
-	ErrTransportIncorrectNumberOfArguments = errors.New("некорректное количество аргументов")
+	ErrTransportIncorrectNumberOfArguments = errors.New("не хватает параметров")
 	ErrTransportInventoryNotAvailable      = errors.New("некуда класть")
 	ErrTransportItemIsNotInTheInventory    = errors.New("нет предмета в инвентаре")
 	ErrTransportItemIsNotInTheRoom         = errors.New("нет такого")
@@ -167,10 +169,8 @@ var (
 	ErrTransportRoomDoesNotExists          = errors.New("комната не существует")
 	ErrTransportDoorDoesNotExists          = errors.New("дверь не существует")
 	ErrTransportItemDoesNotExists          = errors.New("нет такого")
-	ErrTransportItemCantBeCarried          = errors.New("предмет нельзя положить в инвентарь")
-	ErrTransportItemAlreadyInTheInventory  = errors.New("предмент уже есть в инвентаре")
-	ErrTransportItemCantBePutOn            = errors.New("предмет нельзя надеть")
-	ErrTransportItemAlreadyPutOn           = errors.New("предмет уже надет")
+	ErrTransportItemCantBeCarried          = errors.New("нельзя взять")
+	ErrTransportItemCantBePutOn            = errors.New("нельзя надеть")
 	ErrTransportItemCantBeUsed             = errors.New("не к чему применить")
 )
 
@@ -183,7 +183,7 @@ type LookoutTransport struct {
 }
 
 func (t *LookoutTransport) Handler(r Request, w *ResponseWriter) {
-	if len(r.Args()) != t.ArgumentsCount {
+	if len(r.Args()) < t.ArgumentsCount {
 		w.Error(ErrTransportIncorrectNumberOfArguments)
 		return
 	}
@@ -210,7 +210,7 @@ type OpenTransport struct {
 }
 
 func (t *OpenTransport) Handler(r Request, w *ResponseWriter) {
-	if len(r.Args()) != t.ArgumentsCount {
+	if len(r.Args()) < t.ArgumentsCount {
 		w.Error(ErrTransportIncorrectNumberOfArguments)
 		return
 	}
@@ -245,7 +245,7 @@ type PutOnTransport struct {
 }
 
 func (t *PutOnTransport) Handler(r Request, w *ResponseWriter) {
-	if len(r.Args()) != t.ArgumentsCount {
+	if len(r.Args()) < t.ArgumentsCount {
 		w.Error(ErrTransportIncorrectNumberOfArguments)
 		return
 	}
@@ -256,11 +256,9 @@ func (t *PutOnTransport) Handler(r Request, w *ResponseWriter) {
 		case errors.Is(err, ErrServiceItemDoesNotExists):
 			w.Error(ErrTransportItemDoesNotExists)
 		case errors.Is(err, ErrServiceItemCantBePutOn):
-			w.Error(ErrTransportItemCantBePutOn)
+			w.Error(fmt.Errorf("%w: %s", ErrTransportItemCantBePutOn, r.Args()[0]))
 		case errors.Is(err, ErrServiceRoomDoesNotExists):
 			w.Error(ErrTransportRoomDoesNotExists)
-		case errors.Is(err, ErrServiceItemAlreadyPutOn):
-			w.Error(ErrTransportItemAlreadyPutOn)
 		case errors.Is(err, ErrServiceItemIsNotInTheRoom):
 			w.Error(ErrTransportItemIsNotInTheRoom)
 		default:
@@ -282,7 +280,7 @@ type TakeTransport struct {
 }
 
 func (t *TakeTransport) Handler(r Request, w *ResponseWriter) {
-	if len(r.Args()) != t.ArgumentsCount {
+	if len(r.Args()) < t.ArgumentsCount {
 		w.Error(ErrTransportIncorrectNumberOfArguments)
 		return
 	}
@@ -299,9 +297,7 @@ func (t *TakeTransport) Handler(r Request, w *ResponseWriter) {
 		case errors.Is(err, ErrServiceItemDoesNotExists):
 			w.Error(ErrTransportItemDoesNotExists)
 		case errors.Is(err, ErrServiceItemCantBeCarried):
-			w.Error(ErrTransportItemCantBeCarried)
-		case errors.Is(err, ErrServiceItemAlreadyInTheInventory):
-			w.Error(ErrTransportItemAlreadyInTheInventory)
+			w.Error(fmt.Errorf("%w: %s", ErrTransportItemCantBeCarried, r.Args()[0]))
 		default:
 			w.Error(ErrTransportUnexpectedStuff)
 		}
@@ -321,7 +317,7 @@ type WalkTransport struct {
 }
 
 func (t *WalkTransport) Handler(r Request, w *ResponseWriter) {
-	if len(r.Args()) != t.ArgumentsCount {
+	if len(r.Args()) < t.ArgumentsCount {
 		w.Error(ErrTransportIncorrectNumberOfArguments)
 		return
 	}
@@ -359,20 +355,18 @@ func (t *WalkTransport) Handler(r Request, w *ResponseWriter) {
  */
 
 var (
-	ErrServiceNoGateway                 = errors.New("no gateway")
-	ErrServiceDoorDoesNotExists         = errors.New("door does not exists")
-	ErrServiceRoomDoesNotExists         = errors.New("room does not exists")
-	ErrServiceItemDoesNotExists         = errors.New("item does not exists")
-	ErrServiceInventoryNotAvailable     = errors.New("inventory not available")
-	ErrServiceDoorIsClosed              = errors.New("door is closed")
-	ErrServiceItemAlreadyInTheInventory = errors.New("item already in the inventory")
-	ErrServiceItemIsNotInTheInventory   = errors.New("item is not the inventory")
-	ErrServiceItemIsNotInTheRoom        = errors.New("item is not the room")
-	ErrServiceItemAlreadyPutOn          = errors.New("item already put on")
-	ErrServiceItemCantBeCarried         = errors.New("item can't be carried")
-	ErrServiceItemCantBePutOn           = errors.New("item can't be put on")
-	ErrServiceItemCantOpenDoors         = errors.New("item can't open doors")
-	ErrServiceObjectIsNotDoor           = errors.New("object is not a door")
+	ErrServiceNoGateway               = errors.New("no gateway")
+	ErrServiceDoorDoesNotExists       = errors.New("door does not exists")
+	ErrServiceRoomDoesNotExists       = errors.New("room does not exists")
+	ErrServiceItemDoesNotExists       = errors.New("item does not exists")
+	ErrServiceInventoryNotAvailable   = errors.New("inventory not available")
+	ErrServiceDoorIsClosed            = errors.New("door is closed")
+	ErrServiceItemIsNotInTheInventory = errors.New("item is not the inventory")
+	ErrServiceItemIsNotInTheRoom      = errors.New("item is not the room")
+	ErrServiceItemCantBeCarried       = errors.New("item can't be carried")
+	ErrServiceItemCantBePutOn         = errors.New("item can't be put on")
+	ErrServiceItemCantOpenDoors       = errors.New("item can't open doors")
+	ErrServiceObjectIsNotDoor         = errors.New("object is not a door")
 )
 
 /* LOOKOUT COMMAND INTERNAL LOGIC */
@@ -400,7 +394,11 @@ func (u *LookoutUsecase) Lookout() (string, error) {
 		}
 	}
 	if len(furniture) == 0 {
-		segments = append(segments, "пустая "+room.GetName())
+		empty := room.GetEmptyText()
+		if empty == "" {
+			empty = "пустая " + room.GetName()
+		}
+		segments = append(segments, empty)
 	} else {
 		segments = append(segments, strings.Join(furniture, ", "))
 	}
@@ -478,17 +476,17 @@ func (u *PutOnUsecase) PutOn(itemName string) error {
 	if !ok {
 		return ErrServiceItemDoesNotExists
 	}
-	if !item.GetPutOn() {
-		return ErrServiceItemCantBePutOn
-	}
-
 	room, ok := u.World.GetRooms()[u.World.Player.GetPosition()]
 	if !ok {
 		return ErrServiceRoomDoesNotExists
 	}
 
-	if _, ok := u.World.Player.GetClothes()[itemName]; ok {
-		return ErrServiceItemAlreadyPutOn
+	// The item has to be here before anything else is said about it.
+	if !room.HasItem(itemName) {
+		return ErrServiceItemIsNotInTheRoom
+	}
+	if !item.GetPutOn() {
+		return ErrServiceItemCantBePutOn
 	}
 
 	if err := room.RemoveItem(itemName); err != nil {
@@ -514,13 +512,17 @@ func (u *TakeUsecase) Take(itemName string) error {
 	if !ok {
 		return ErrServiceItemDoesNotExists
 	}
-	if !item.GetCarry() {
-		return ErrServiceItemCantBeCarried
-	}
-
 	room, ok := u.World.GetRooms()[u.World.Player.GetPosition()]
 	if !ok {
 		return ErrServiceRoomDoesNotExists
+	}
+
+	// The item has to be here before anything else is said about it.
+	if !room.HasItem(itemName) {
+		return ErrServiceItemIsNotInTheRoom
+	}
+	if !item.GetCarry() {
+		return ErrServiceItemCantBeCarried
 	}
 
 	if !u.World.Player.GetInventoryAvailable() {
@@ -634,12 +636,10 @@ func (w *World) GetRooms() map[string]*Room {
 
 /* PLAYER THE STATE STORAGE */
 
-// A goal is complete when all of its items are in the
-// inventory and all of its rooms have been visited.
+// A goal with a nil Done function is never completed.
 type Goal struct {
-	Name  string
-	Items []string
-	Rooms []string
+	Name string
+	Done func(p *Player) bool
 }
 
 // Responsible for storing player
@@ -649,7 +649,6 @@ type Player struct {
 	Inventory map[string]struct{}
 	Clothes   map[string]struct{}
 	Position  string
-	Visited   map[string]struct{}
 	Goals     []Goal
 
 	InventoryAvailable bool
@@ -681,7 +680,6 @@ func (p *Player) GetPosition() string {
 
 func (p *Player) ChangePosition(roomName string) {
 	p.Position = roomName
-	p.Visited[roomName] = struct{}{}
 }
 
 func (p *Player) GetInventoryAvailable() bool {
@@ -697,20 +695,7 @@ func (p *Player) PendingGoals() []string {
 	pending := make([]string, 0, len(p.Goals))
 
 	for _, goal := range p.Goals {
-		done := true
-
-		for _, item := range goal.Items {
-			if _, ok := p.Inventory[item]; !ok {
-				done = false
-			}
-		}
-		for _, room := range goal.Rooms {
-			if _, ok := p.Visited[room]; !ok {
-				done = false
-			}
-		}
-
-		if !done {
+		if goal.Done == nil || !goal.Done(p) {
 			pending = append(pending, goal.Name)
 		}
 	}
@@ -794,6 +779,7 @@ type Room struct {
 
 	EntryWelcome   string
 	LookoutWelcome string
+	EmptyText      string // what the lookout says when nothing lies in the room
 
 	// Optional room-specific addition to the lookout text.
 	LookoutExtra func(p *Player) string
@@ -842,6 +828,20 @@ func (r *Room) GetEntryWelcome() string {
 
 func (r *Room) GetLookoutWelcome() string {
 	return r.LookoutWelcome
+}
+
+func (r *Room) GetEmptyText() string {
+	return r.EmptyText
+}
+
+func (r *Room) HasItem(itemName string) bool {
+	for _, f := range r.Furniture {
+		if slices.Contains(f.Items, itemName) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (r *Room) GetLookoutExtra() func(p *Player) string {
