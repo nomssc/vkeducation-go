@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -10,143 +11,119 @@ func main() {}
 
 func initGame() {
 	var (
-		ItemKeys = Item{
+		itemKeys = Item{
 			Name: "ключи",
 
 			OpenDoors: true,
-			PutOn:     false,
 			Carry:     true,
 		}
-		ItemWriting = Item{
+		itemWriting = Item{
 			Name: "конспекты",
 
-			OpenDoors: false,
-			PutOn:     false,
-			Carry:     true,
+			Carry: true,
 		}
-		ItemBackpack = Item{
+		itemBackpack = Item{
 			Name: "рюкзак",
 
-			OpenDoors: false,
-			PutOn:     true,
-			Carry:     false,
+			PutOn:          true,
+			GivesInventory: true,
 		}
-		ItemTea = Item{
+		itemTea = Item{
 			Name: "чай",
-
-			OpenDoors: false,
-			PutOn:     true,
-			Carry:     false,
 		}
 	)
 
-	var (
-		FurnitureTable = "стол"
-		FurnitureChair = "стул"
+	doorStreet := &Door{
+		Name:   "дверь",
+		Status: false,
+	}
+
+	const (
+		roomNameKitchen = "кухня"
+		roomNameHallway = "коридор"
+		roomNameBedroom = "комната"
+		roomNameStreet  = "улица"
 	)
 
-	var (
-		DoorStreet = Door{
-			Name:   "дверь",
-			Status: false,
-		}
-	)
+	// Gateway{Label, Room}: the label is what the player types and sees,
+	// the room is where it actually leads. They differ for "домой".
+	kitchen := &Room{
+		Name: roomNameKitchen,
+		Furniture: []Furniture{
+			{Place: "на столе", Items: []string{itemTea.Name}},
+		},
+		Gateways: []Gateway{{Label: roomNameHallway, Room: roomNameHallway}},
 
-	var (
-		RoomNameKitchen         = "кухня"
-		RoomEntryWelcomeKitchen = "кухня, ничего интересного"
-		RoomNameHallway         = "коридор"
-		RoomEntryWelcomeHallway = "ничего интересного"
-		RoomNameBedroom         = "комната"
-		RoomEntryWelcomeBedroom = "ты в своей комнате"
-		RoomNameStreet          = "улица"
-		RoomEntryWelcomeStreet  = "на улице весна"
-		RoomNameHome            = "домой"
-		RoomEntryWelcomeHome    = ""
-	)
+		EntryWelcome:   "кухня, ничего интересного",
+		LookoutWelcome: "ты находишься на кухне",
+	}
+	hallway := &Room{
+		Name: roomNameHallway,
+		Gateways: []Gateway{
+			{Label: roomNameKitchen, Room: roomNameKitchen},
+			{Label: roomNameBedroom, Room: roomNameBedroom},
+			{Label: roomNameStreet, Room: roomNameStreet},
+		},
 
-	var (
-		RoomKitchen = Room{
-			Name: RoomNameKitchen,
-			Inventory: map[string]map[string]struct{}{
-				FurnitureTable: map[string]struct{}{
-					ItemTea.Name: struct{}{},
-				},
-			},
-			Door:     "",
-			Gateways: []string{RoomNameHallway},
+		EntryWelcome: "ничего интересного",
+	}
+	bedroom := &Room{
+		Name: roomNameBedroom,
+		Furniture: []Furniture{
+			{Place: "на столе", Items: []string{itemKeys.Name, itemWriting.Name}},
+			{Place: "на стуле", Items: []string{itemBackpack.Name}},
+		},
+		Gateways: []Gateway{{Label: roomNameHallway, Room: roomNameHallway}},
 
-			EntryWelcome: RoomEntryWelcomeKitchen,
-		}
-		RoomHallway = Room{
-			Name:      RoomNameHallway,
-			Inventory: map[string]map[string]struct{}{},
-			Door:      "",
-			Gateways:  []string{RoomNameKitchen, RoomNameBedroom, RoomNameStreet},
+		EntryWelcome: "ты в своей комнате",
+	}
+	street := &Room{
+		Name:     roomNameStreet,
+		Door:     doorStreet.Name,
+		Gateways: []Gateway{{Label: "домой", Room: roomNameKitchen}},
 
-			EntryWelcome: RoomEntryWelcomeHallway,
-		}
-		RoomBedroom = Room{
-			Name: RoomNameBedroom,
-			Inventory: map[string]map[string]struct{}{
-				FurnitureTable: map[string]struct{}{
-					ItemKeys.Name:    struct{}{},
-					ItemWriting.Name: struct{}{},
-				},
-				FurnitureChair: map[string]struct{}{
-					ItemBackpack.Name: struct{}{},
-				},
-			},
-			Door:     "",
-			Gateways: []string{RoomNameHallway},
+		EntryWelcome: "на улице весна",
+	}
 
-			EntryWelcome: RoomEntryWelcomeBedroom,
-		}
-		RoomStreet = Room{
-			Name:      RoomNameStreet,
-			Inventory: map[string]map[string]struct{}{},
-			Door:      DoorStreet.Name,
-			Gateways:  []string{RoomNameHome},
-
-			EntryWelcome: RoomEntryWelcomeStreet,
-		}
-		RoomHome = Room{
-			Name:      RoomNameHome,
-			Inventory: map[string]map[string]struct{}{},
-			Door:      "",
-			Gateways:  []string{},
-
-			EntryWelcome: RoomEntryWelcomeHome,
-		}
-	)
-
-	var Player = &Player{
+	player := &Player{
 		Name:      "@nomssc",
 		Inventory: map[string]struct{}{},
 		Clothes:   map[string]struct{}{},
-		Position:  RoomNameKitchen,
+		Position:  roomNameKitchen,
+		Visited:   map[string]struct{}{roomNameKitchen: {}},
+		Goals: []Goal{
+			{Name: "собрать рюкзак", Items: []string{itemKeys.Name, itemWriting.Name}},
+			{Name: "идти в универ", Rooms: []string{roomNameStreet}},
+		},
+	}
 
-		InventoryAvailable: false,
+	// Kitchen-specific behavior lives here, not in the usecase.
+	kitchen.LookoutExtra = func(p *Player) string {
+		pending := p.PendingGoals()
+		if len(pending) == 0 {
+			return ""
+		}
+
+		return "надо " + strings.Join(pending, " и ")
 	}
 
 	world = NewWorld(ConfigWorld{
 		World{
-			Player: Player,
+			Player: player,
 			Items: map[string]Item{
-				ItemKeys.Name:     ItemKeys,
-				ItemWriting.Name:  ItemWriting,
-				ItemBackpack.Name: ItemBackpack,
-				ItemTea.Name:      ItemTea,
+				itemKeys.Name:     itemKeys,
+				itemWriting.Name:  itemWriting,
+				itemBackpack.Name: itemBackpack,
+				itemTea.Name:      itemTea,
 			},
 			Doors: map[string]*Door{
-				DoorStreet.Name: &DoorStreet,
+				doorStreet.Name: doorStreet,
 			},
 			Rooms: map[string]*Room{
-				RoomKitchen.Name: &RoomKitchen,
-				RoomHallway.Name: &RoomHallway,
-				RoomBedroom.Name: &RoomBedroom,
-				RoomStreet.Name:  &RoomStreet,
-				RoomHome.Name:    &RoomHome,
+				kitchen.Name: kitchen,
+				hallway.Name: hallway,
+				bedroom.Name: bedroom,
+				street.Name:  street,
 			},
 		},
 	})
@@ -158,12 +135,13 @@ func initGame() {
 		},
 	})
 
-	walk := &WalkTransport{Usecase: &WalkUsecase{World: world}, AgrumentsCount: 1}
-	open := &OpenTransport{Usecase: &OpenUsecase{World: world}, AgrumentsCount: 2}
-	take := &TakeTransport{Usecase: &TakeUsecase{World: world}, AgrumentsCount: 1}
-	putOn := &PutOnTransport{Usecase: &PutOnUsecase{World: world}, AgrumentsCount: 1}
+	lookout := &LookoutTransport{Usecase: &LookoutUsecase{World: world}, ArgumentsCount: 0}
+	walk := &WalkTransport{Usecase: &WalkUsecase{World: world}, ArgumentsCount: 1}
+	open := &OpenTransport{Usecase: &OpenUsecase{World: world}, ArgumentsCount: 2}
+	take := &TakeTransport{Usecase: &TakeUsecase{World: world}, ArgumentsCount: 1}
+	putOn := &PutOnTransport{Usecase: &PutOnUsecase{World: world}, ArgumentsCount: 1}
 
-	//cli.Handle("осмотреться", nil)
+	cli.Handle("осмотреться", lookout.Handler)
 	cli.Handle("идти", walk.Handler)
 	cli.Handle("применить", open.Handler)
 	cli.Handle("взять", take.Handler)
@@ -194,19 +172,45 @@ var (
 	ErrTransportItemCantBePutOn            = errors.New("предмет нельзя надеть")
 	ErrTransportItemAlreadyPutOn           = errors.New("предмет уже надет")
 	ErrTransportItemCantBeUsed             = errors.New("не к чему применить")
-	ErrTransportRoomDoesNotHaveDoors       = errors.New("комната не имеет дверей")
 )
+
+/* LOOKOUT COMMAND TRANSPORT LOGIC */
+
+type LookoutTransport struct {
+	Usecase *LookoutUsecase
+
+	ArgumentsCount int
+}
+
+func (t *LookoutTransport) Handler(r Request, w *ResponseWriter) {
+	if len(r.Args()) != t.ArgumentsCount {
+		w.Error(ErrTransportIncorrectNumberOfArguments)
+		return
+	}
+
+	message, err := t.Usecase.Lookout()
+	if err != nil {
+		if errors.Is(err, ErrServiceRoomDoesNotExists) {
+			w.Error(ErrTransportRoomDoesNotExists)
+			return
+		}
+		w.Error(ErrTransportUnexpectedStuff)
+		return
+	}
+
+	w.Write(message)
+}
 
 /* OPEN COMMAND TRANSPORT LOGIC */
 
 type OpenTransport struct {
 	Usecase *OpenUsecase
 
-	AgrumentsCount int
+	ArgumentsCount int
 }
 
 func (t *OpenTransport) Handler(r Request, w *ResponseWriter) {
-	if !validateArgumentsCount(r.Args(), t.AgrumentsCount) {
+	if len(r.Args()) != t.ArgumentsCount {
 		w.Error(ErrTransportIncorrectNumberOfArguments)
 		return
 	}
@@ -216,23 +220,17 @@ func (t *OpenTransport) Handler(r Request, w *ResponseWriter) {
 		switch {
 		case errors.Is(err, ErrServiceItemDoesNotExists):
 			w.Error(ErrTransportItemDoesNotExists)
-			return
 		case errors.Is(err, ErrServiceItemIsNotInTheInventory):
 			w.Error(fmt.Errorf("%w - %s", ErrTransportItemIsNotInTheInventory, r.Args()[0]))
-			return
 		case errors.Is(err, ErrServiceItemCantOpenDoors) || errors.Is(err, ErrServiceObjectIsNotDoor):
 			w.Error(ErrTransportItemCantBeUsed)
-			return
 		case errors.Is(err, ErrServiceRoomDoesNotExists):
 			w.Error(ErrTransportRoomDoesNotExists)
-			return
-		case errors.Is(err, ErrServiceRoomDoesNotHaveDoors):
-			w.Error(ErrTransportRoomDoesNotHaveDoors)
-			return
 		default:
 			w.Error(ErrTransportUnexpectedStuff)
-			return
 		}
+
+		return
 	}
 
 	w.Write("дверь открыта")
@@ -243,11 +241,11 @@ func (t *OpenTransport) Handler(r Request, w *ResponseWriter) {
 type PutOnTransport struct {
 	Usecase *PutOnUsecase
 
-	AgrumentsCount int
+	ArgumentsCount int
 }
 
 func (t *PutOnTransport) Handler(r Request, w *ResponseWriter) {
-	if !validateArgumentsCount(r.Args(), t.AgrumentsCount) {
+	if len(r.Args()) != t.ArgumentsCount {
 		w.Error(ErrTransportIncorrectNumberOfArguments)
 		return
 	}
@@ -257,23 +255,19 @@ func (t *PutOnTransport) Handler(r Request, w *ResponseWriter) {
 		switch {
 		case errors.Is(err, ErrServiceItemDoesNotExists):
 			w.Error(ErrTransportItemDoesNotExists)
-			return
 		case errors.Is(err, ErrServiceItemCantBePutOn):
 			w.Error(ErrTransportItemCantBePutOn)
-			return
 		case errors.Is(err, ErrServiceRoomDoesNotExists):
 			w.Error(ErrTransportRoomDoesNotExists)
-			return
 		case errors.Is(err, ErrServiceItemAlreadyPutOn):
 			w.Error(ErrTransportItemAlreadyPutOn)
-			return
 		case errors.Is(err, ErrServiceItemIsNotInTheRoom):
 			w.Error(ErrTransportItemIsNotInTheRoom)
-			return
 		default:
 			w.Error(ErrTransportUnexpectedStuff)
-			return
 		}
+
+		return
 	}
 
 	w.Write(fmt.Sprintf("вы надели: %s", r.Args()[0]))
@@ -284,11 +278,11 @@ func (t *PutOnTransport) Handler(r Request, w *ResponseWriter) {
 type TakeTransport struct {
 	Usecase *TakeUsecase
 
-	AgrumentsCount int
+	ArgumentsCount int
 }
 
 func (t *TakeTransport) Handler(r Request, w *ResponseWriter) {
-	if !validateArgumentsCount(r.Args(), t.AgrumentsCount) {
+	if len(r.Args()) != t.ArgumentsCount {
 		w.Error(ErrTransportIncorrectNumberOfArguments)
 		return
 	}
@@ -298,26 +292,21 @@ func (t *TakeTransport) Handler(r Request, w *ResponseWriter) {
 		switch {
 		case errors.Is(err, ErrServiceRoomDoesNotExists):
 			w.Error(ErrTransportRoomDoesNotExists)
-			return
 		case errors.Is(err, ErrServiceInventoryNotAvailable):
 			w.Error(ErrTransportInventoryNotAvailable)
-			return
 		case errors.Is(err, ErrServiceItemIsNotInTheRoom):
 			w.Error(ErrTransportItemIsNotInTheRoom)
-			return
 		case errors.Is(err, ErrServiceItemDoesNotExists):
 			w.Error(ErrTransportItemDoesNotExists)
-			return
 		case errors.Is(err, ErrServiceItemCantBeCarried):
 			w.Error(ErrTransportItemCantBeCarried)
-			return
 		case errors.Is(err, ErrServiceItemAlreadyInTheInventory):
 			w.Error(ErrTransportItemAlreadyInTheInventory)
-			return
 		default:
 			w.Error(ErrTransportUnexpectedStuff)
-			return
 		}
+
+		return
 	}
 
 	w.Write(fmt.Sprintf("предмет добавлен в инвентарь: %s", r.Args()[0]))
@@ -328,11 +317,11 @@ func (t *TakeTransport) Handler(r Request, w *ResponseWriter) {
 type WalkTransport struct {
 	Usecase *WalkUsecase
 
-	AgrumentsCount int
+	ArgumentsCount int
 }
 
 func (t *WalkTransport) Handler(r Request, w *ResponseWriter) {
-	if !validateArgumentsCount(r.Args(), t.AgrumentsCount) {
+	if len(r.Args()) != t.ArgumentsCount {
 		w.Error(ErrTransportIncorrectNumberOfArguments)
 		return
 	}
@@ -342,34 +331,25 @@ func (t *WalkTransport) Handler(r Request, w *ResponseWriter) {
 		switch {
 		case errors.Is(err, ErrServiceRoomDoesNotExists):
 			w.Error(ErrTransportRoomDoesNotExists)
-			return
 		case errors.Is(err, ErrServiceNoGateway):
 			w.Error(fmt.Errorf("%w в %s", ErrTransportNoGateway, r.Args()[0]))
-			return
-		case errors.Is(err, ErrServiceNoGateway):
-			w.Error(ErrTransportDoorIsClosed)
-			return
 		case errors.Is(err, ErrServiceDoorDoesNotExists):
 			w.Error(ErrTransportDoorDoesNotExists)
-			return
 		case errors.Is(err, ErrServiceDoorIsClosed):
 			w.Error(ErrTransportDoorIsClosed)
-			return
 		default:
 			w.Error(ErrTransportUnexpectedStuff)
-			return
 		}
+
+		return
+	}
+
+	if gateways == "" {
+		w.Write(entryWelcome)
+		return
 	}
 
 	w.Write(fmt.Sprintf("%s. можно пройти - %s", entryWelcome, gateways))
-}
-
-func validateArgumentsCount(args []string, expectedCount int) bool {
-	if len(args) != expectedCount {
-		return false
-	}
-
-	return true
 }
 
 /*
@@ -393,8 +373,51 @@ var (
 	ErrServiceItemCantBePutOn           = errors.New("item can't be put on")
 	ErrServiceItemCantOpenDoors         = errors.New("item can't open doors")
 	ErrServiceObjectIsNotDoor           = errors.New("object is not a door")
-	ErrServiceRoomDoesNotHaveDoors      = errors.New("room does not have doors")
 )
+
+/* LOOKOUT COMMAND INTERNAL LOGIC */
+
+type LookoutUsecase struct {
+	World *World
+}
+
+func (u *LookoutUsecase) Lookout() (string, error) {
+	room, ok := u.World.GetRooms()[u.World.Player.GetPosition()]
+	if !ok {
+		return "", ErrServiceRoomDoesNotExists
+	}
+
+	segments := make([]string, 0, 3)
+
+	if welcome := room.GetLookoutWelcome(); welcome != "" {
+		segments = append(segments, welcome)
+	}
+
+	furniture := make([]string, 0, len(room.GetFurniture()))
+	for _, f := range room.GetFurniture() {
+		if len(f.Items) != 0 {
+			furniture = append(furniture, fmt.Sprintf("%s: %s", f.Place, strings.Join(f.Items, ", ")))
+		}
+	}
+	if len(furniture) == 0 {
+		segments = append(segments, "пустая "+room.GetName())
+	} else {
+		segments = append(segments, strings.Join(furniture, ", "))
+	}
+
+	if extra := room.GetLookoutExtra(); extra != nil {
+		if s := extra(u.World.Player); s != "" {
+			segments = append(segments, s)
+		}
+	}
+
+	result := strings.Join(segments, ", ")
+	if labels := room.GatewayLabels(); len(labels) != 0 {
+		result += ". можно пройти - " + strings.Join(labels, ", ")
+	}
+
+	return result, nil
+}
 
 /* OPEN COMMAND INTERNAL LOGIC */
 
@@ -403,43 +426,40 @@ type OpenUsecase struct {
 }
 
 func (u *OpenUsecase) Open(itemName string, object string) error {
-	inventory := u.World.Player.GetInventory()
-	_, ok := inventory[itemName]
-	if !ok {
+	if _, ok := u.World.Player.GetInventory()[itemName]; !ok {
 		return ErrServiceItemIsNotInTheInventory
 	}
-	items := u.World.GetItems()
-	item, ok := items[itemName]
+
+	item, ok := u.World.GetItems()[itemName]
 	if !ok {
 		return ErrServiceItemDoesNotExists
 	}
 	if !item.GetOpenDoors() {
 		return ErrServiceItemCantOpenDoors
 	}
-	doors := u.World.GetDoors()
-	door, ok := doors[object]
+
+	door, ok := u.World.GetDoors()[object]
 	if !ok {
 		return ErrServiceObjectIsNotDoor
 	}
 
-	roomName := u.World.Player.GetPosition()
 	rooms := u.World.GetRooms()
-	room, ok := rooms[roomName]
+	room, ok := rooms[u.World.Player.GetPosition()]
 	if !ok {
 		return ErrServiceRoomDoesNotExists
 	}
-	exists := false
-	gateways := room.GetGateways()
-	for _, gateway := range gateways {
-		rooms := u.World.GetRooms()
-		room := rooms[gateway]
-		doorName := room.GetDoor()
-		if doorName != "" || doorName == object {
-			exists = true
+
+	// The door must belong to a room reachable from where the player stands.
+	reachable := false
+	for _, gateway := range room.GetGateways() {
+		next, ok := rooms[gateway.Room]
+		if ok && next.GetDoor() == object {
+			reachable = true
+			break
 		}
 	}
-	if !exists {
-		return ErrServiceRoomDoesNotHaveDoors
+	if !reachable {
+		return ErrServiceObjectIsNotDoor
 	}
 
 	door.ChangeStatus(true)
@@ -454,8 +474,7 @@ type PutOnUsecase struct {
 }
 
 func (u *PutOnUsecase) PutOn(itemName string) error {
-	items := u.World.GetItems()
-	item, ok := items[itemName]
+	item, ok := u.World.GetItems()[itemName]
 	if !ok {
 		return ErrServiceItemDoesNotExists
 	}
@@ -463,25 +482,23 @@ func (u *PutOnUsecase) PutOn(itemName string) error {
 		return ErrServiceItemCantBePutOn
 	}
 
-	roomName := u.World.Player.GetPosition()
-	rooms := u.World.GetRooms()
-	room, ok := rooms[roomName]
+	room, ok := u.World.GetRooms()[u.World.Player.GetPosition()]
 	if !ok {
 		return ErrServiceRoomDoesNotExists
 	}
 
-	clothes := u.World.Player.GetClothes()
-	_, ok = clothes[itemName]
-	if ok {
+	if _, ok := u.World.Player.GetClothes()[itemName]; ok {
 		return ErrServiceItemAlreadyPutOn
 	}
 
-	err := room.RemoveItem(itemName)
-	if err != nil {
+	if err := room.RemoveItem(itemName); err != nil {
 		return ErrServiceItemIsNotInTheRoom
 	}
+
 	u.World.Player.StoreWear(itemName)
-	u.World.Player.ChangeInventoryAvailability(true)
+	if item.GetGivesInventory() {
+		u.World.Player.ChangeInventoryAvailability(true)
+	}
 
 	return nil
 }
@@ -493,8 +510,7 @@ type TakeUsecase struct {
 }
 
 func (u *TakeUsecase) Take(itemName string) error {
-	items := u.World.GetItems()
-	item, ok := items[itemName]
+	item, ok := u.World.GetItems()[itemName]
 	if !ok {
 		return ErrServiceItemDoesNotExists
 	}
@@ -502,9 +518,7 @@ func (u *TakeUsecase) Take(itemName string) error {
 		return ErrServiceItemCantBeCarried
 	}
 
-	roomName := u.World.Player.GetPosition()
-	rooms := u.World.GetRooms()
-	room, ok := rooms[roomName]
+	room, ok := u.World.GetRooms()[u.World.Player.GetPosition()]
 	if !ok {
 		return ErrServiceRoomDoesNotExists
 	}
@@ -513,15 +527,10 @@ func (u *TakeUsecase) Take(itemName string) error {
 		return ErrServiceInventoryNotAvailable
 	}
 
-	err := room.RemoveItem(itemName)
-	if err != nil {
+	// An item the player already took is no longer in the room,
+	// so it is reported as "нет такого" here.
+	if err := room.RemoveItem(itemName); err != nil {
 		return ErrServiceItemIsNotInTheRoom
-	}
-
-	inventory := u.World.Player.GetInventory()
-	_, ok = inventory[itemName]
-	if ok {
-		return ErrServiceItemAlreadyInTheInventory
 	}
 
 	u.World.Player.StoreItem(itemName)
@@ -536,41 +545,42 @@ type WalkUsecase struct {
 }
 
 func (u *WalkUsecase) Walk(direction string) (string, string, error) {
-	roomName := u.World.Player.GetPosition()
-
 	rooms := u.World.GetRooms()
-	currentRoom, ok := rooms[roomName]
+
+	currentRoom, ok := rooms[u.World.Player.GetPosition()]
 	if !ok {
 		return "", "", ErrServiceRoomDoesNotExists
 	}
-	gateways := currentRoom.GetGateways()
-	exists := false
-	for _, gateway := range gateways {
-		if gateway == direction {
-			exists = true
+
+	target := ""
+	for _, gateway := range currentRoom.GetGateways() {
+		if gateway.Label == direction {
+			target = gateway.Room
+			break
 		}
 	}
-	if !exists {
+	if target == "" {
 		return "", "", ErrServiceNoGateway
 	}
 
-	nextRoom, ok := rooms[direction]
+	nextRoom, ok := rooms[target]
 	if !ok {
 		return "", "", ErrServiceRoomDoesNotExists
 	}
-	doorName := nextRoom.Door
-	doors := u.World.GetDoors()
-	door, ok := doors[doorName]
-	if ok && !door.GetDoorStatus() {
-		return "", "", ErrServiceDoorIsClosed
+
+	if doorName := nextRoom.GetDoor(); doorName != "" {
+		door, ok := u.World.GetDoors()[doorName]
+		if !ok {
+			return "", "", ErrServiceDoorDoesNotExists
+		}
+		if !door.GetDoorStatus() {
+			return "", "", ErrServiceDoorIsClosed
+		}
 	}
 
-	u.World.Player.ChangePosition(nextRoom.Name)
+	u.World.Player.ChangePosition(nextRoom.GetName())
 
-	gateways = nextRoom.GetGateways()
-	gatewaysStr := strings.Join(gateways, ", ")
-
-	return nextRoom.EntryWelcome, gatewaysStr, nil
+	return nextRoom.GetEntryWelcome(), strings.Join(nextRoom.GatewayLabels(), ", "), nil
 }
 
 /*
@@ -624,6 +634,14 @@ func (w *World) GetRooms() map[string]*Room {
 
 /* PLAYER THE STATE STORAGE */
 
+// A goal is complete when all of its items are in the
+// inventory and all of its rooms have been visited.
+type Goal struct {
+	Name  string
+	Items []string
+	Rooms []string
+}
+
 // Responsible for storing player
 // state.
 type Player struct {
@@ -631,6 +649,8 @@ type Player struct {
 	Inventory map[string]struct{}
 	Clothes   map[string]struct{}
 	Position  string
+	Visited   map[string]struct{}
+	Goals     []Goal
 
 	InventoryAvailable bool
 }
@@ -661,6 +681,7 @@ func (p *Player) GetPosition() string {
 
 func (p *Player) ChangePosition(roomName string) {
 	p.Position = roomName
+	p.Visited[roomName] = struct{}{}
 }
 
 func (p *Player) GetInventoryAvailable() bool {
@@ -671,15 +692,42 @@ func (p *Player) ChangeInventoryAvailability(value bool) {
 	p.InventoryAvailable = value
 }
 
+// Names of the goals that are not complete yet, in declaration order.
+func (p *Player) PendingGoals() []string {
+	pending := make([]string, 0, len(p.Goals))
+
+	for _, goal := range p.Goals {
+		done := true
+
+		for _, item := range goal.Items {
+			if _, ok := p.Inventory[item]; !ok {
+				done = false
+			}
+		}
+		for _, room := range goal.Rooms {
+			if _, ok := p.Visited[room]; !ok {
+				done = false
+			}
+		}
+
+		if !done {
+			pending = append(pending, goal.Name)
+		}
+	}
+
+	return pending
+}
+
 /* ITEM THE STORAGE DEFINITION */
 
 // Defines parameters.
 type Item struct {
 	Name string
 
-	OpenDoors bool
-	PutOn     bool
-	Carry     bool
+	OpenDoors      bool
+	PutOn          bool
+	Carry          bool
+	GivesInventory bool
 }
 
 func (i Item) GetName() string {
@@ -696,6 +744,10 @@ func (i Item) GetPutOn() bool {
 
 func (i Item) GetCarry() bool {
 	return i.Carry
+}
+
+func (i Item) GetGivesInventory() bool {
+	return i.GivesInventory
 }
 
 /* DOOR THE STORAGE DEFINITION */
@@ -716,43 +768,84 @@ func (d *Door) ChangeStatus(value bool) {
 
 /* ROOM THE STATE STORAGE */
 
+var errRoomItemNotFound = errors.New("item is not in the room")
+
+// A piece of furniture and the items lying on it,
+// kept in order so the output is deterministic.
+type Furniture struct {
+	Place string // full phrase, e.g. "на столе"
+	Items []string
+}
+
+// A way out of a room: Label is what the player types,
+// Room is the room it leads to.
+type Gateway struct {
+	Label string
+	Room  string
+}
+
 // Responsible for storing room
 // state.
 type Room struct {
 	Name      string
-	Inventory map[string]map[string]struct{}
+	Furniture []Furniture
 	Door      string
-	Gateways  []string
+	Gateways  []Gateway
 
-	EntryWelcome string
+	EntryWelcome   string
+	LookoutWelcome string
+
+	// Optional room-specific addition to the lookout text.
+	LookoutExtra func(p *Player) string
 }
 
 func (r *Room) GetName() string {
 	return r.Name
 }
 
+func (r *Room) GetFurniture() []Furniture {
+	return r.Furniture
+}
+
 func (r *Room) RemoveItem(itemName string) error {
-	for _, furniture := range r.Inventory {
-		_, ok := furniture[itemName]
-		if ok {
-			delete(furniture, itemName)
+	for i := range r.Furniture {
+		items := r.Furniture[i].Items
+		if idx := slices.Index(items, itemName); idx >= 0 {
+			r.Furniture[i].Items = slices.Delete(items, idx, idx+1)
 			return nil
 		}
 	}
 
-	return fmt.Errorf("item is not the inventory")
+	return errRoomItemNotFound
 }
 
 func (r *Room) GetDoor() string {
 	return r.Door
 }
 
-func (r *Room) GetGateways() []string {
+func (r *Room) GetGateways() []Gateway {
 	return r.Gateways
+}
+
+func (r *Room) GatewayLabels() []string {
+	labels := make([]string, 0, len(r.Gateways))
+	for _, gateway := range r.Gateways {
+		labels = append(labels, gateway.Label)
+	}
+
+	return labels
 }
 
 func (r *Room) GetEntryWelcome() string {
 	return r.EntryWelcome
+}
+
+func (r *Room) GetLookoutWelcome() string {
+	return r.LookoutWelcome
+}
+
+func (r *Room) GetLookoutExtra() func(p *Player) string {
+	return r.LookoutExtra
 }
 
 /*
@@ -856,9 +949,9 @@ func handleCommand(command string) string {
 
 	if w.error != nil {
 		return w.error.Error()
-	} else {
-		return w.message
 	}
+
+	return w.message
 }
 
 func (c *CLI) Handle(command string, h Handler) {
@@ -892,7 +985,7 @@ func (m *Mux) Attach(command string, h Handler) {
 func (m *Mux) Process(command string) (Handler, error) {
 	handler, ok := m.handlers[command]
 	if !ok {
-		return nil, fmt.Errorf("command does not exists")
+		return nil, errors.New("command does not exists")
 	}
 
 	return handler, nil
@@ -915,9 +1008,9 @@ func NewCodec(c ...ConfigCodec) Codec {
 }
 
 func (c Codec) UnparseCommandString(s string) ([]string, error) {
-	command := strings.Split(s, " ")
+	command := strings.Fields(s)
 	if len(command) < 1 {
-		return nil, fmt.Errorf("no command")
+		return nil, errors.New("no command")
 	}
 
 	return command, nil
