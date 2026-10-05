@@ -6,11 +6,7 @@ import (
 	"strings"
 )
 
-func main() {
-	initGame()
-
-	_ = handleCommand("")
-}
+func main() {}
 
 func initGame() {
 	var (
