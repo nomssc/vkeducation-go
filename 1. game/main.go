@@ -201,6 +201,8 @@ var (
 	ErrTransportRoomDoesNotHaveDoors       = errors.New("комната не имеет дверей")
 )
 
+/* OPEN COMMAND TRANSPORT LOGIC */
+
 type OpenTransport struct {
 	Usecase *OpenUsecase
 
@@ -240,6 +242,8 @@ func (t *OpenTransport) Handler(r Request, w *ResponseWriter) {
 	w.Write("дверь открыта")
 }
 
+/* PUT ON COMMAND TRANSPORT LOGIC */
+
 type PutOnTransport struct {
 	Usecase *PutOnUsecase
 
@@ -278,6 +282,8 @@ func (t *PutOnTransport) Handler(r Request, w *ResponseWriter) {
 
 	w.Write(fmt.Sprintf("вы надели: %s", r.Args()[0]))
 }
+
+/* TAKE COMMAND TRANSPORT LOGIC */
 
 type TakeTransport struct {
 	Usecase *TakeUsecase
@@ -320,6 +326,8 @@ func (t *TakeTransport) Handler(r Request, w *ResponseWriter) {
 
 	w.Write(fmt.Sprintf("предмет добавлен в инвентарь: %s", r.Args()[0]))
 }
+
+/* WALK COMMAND TRANSPORT LOGIC */
 
 type WalkTransport struct {
 	Usecase *WalkUsecase
@@ -392,6 +400,8 @@ var (
 	ErrServiceRoomDoesNotHaveDoors      = errors.New("room does not have doors")
 )
 
+/* OPEN COMMAND INTERNAL LOGIC */
+
 type OpenUsecase struct {
 	World *World
 }
@@ -441,6 +451,8 @@ func (u *OpenUsecase) Open(itemName string, object string) error {
 	return nil
 }
 
+/* PUT ON COMMAND INTERNAL LOGIC */
+
 type PutOnUsecase struct {
 	World *World
 }
@@ -477,6 +489,8 @@ func (u *PutOnUsecase) PutOn(itemName string) error {
 
 	return nil
 }
+
+/* TAKE COMMAND INTERNAL LOGIC */
 
 type TakeUsecase struct {
 	World *World
@@ -518,6 +532,8 @@ func (u *TakeUsecase) Take(itemName string) error {
 
 	return nil
 }
+
+/* WALK COMMAND INTERNAL LOGIC */
 
 type WalkUsecase struct {
 	World *World
@@ -568,12 +584,18 @@ func (u *WalkUsecase) Walk(direction string) (string, string, error) {
  * resources.
  */
 
+/* WORLD THE STATE STORAGE */
+
 var world *World
 
+// Used to configurate world on
+// inititalization.
 type ConfigWorld struct {
 	World
 }
 
+// Responsible for storing the
+// whole game world state.
 type World struct {
 	Player *Player
 
@@ -582,6 +604,32 @@ type World struct {
 	Rooms map[string]*Room
 }
 
+func NewWorld(c ConfigWorld) *World {
+	return &World{
+		Player: c.Player,
+
+		Items: c.Items,
+		Doors: c.Doors,
+		Rooms: c.Rooms,
+	}
+}
+
+func (w *World) GetItems() map[string]Item {
+	return w.Items
+}
+
+func (w *World) GetDoors() map[string]*Door {
+	return w.Doors
+}
+
+func (w *World) GetRooms() map[string]*Room {
+	return w.Rooms
+}
+
+/* PLAYER THE STATE STORAGE */
+
+// Responsible for storing player
+// state.
 type Player struct {
 	Name      string
 	Inventory map[string]struct{}
@@ -627,6 +675,9 @@ func (p *Player) ChangeInventoryAvailability(value bool) {
 	p.InventoryAvailable = value
 }
 
+/* ITEM THE STORAGE DEFINITION */
+
+// Defines parameters.
 type Item struct {
 	Name string
 
@@ -651,6 +702,9 @@ func (i Item) GetCarry() bool {
 	return i.Carry
 }
 
+/* DOOR THE STORAGE DEFINITION */
+
+// Defines parameters.
 type Door struct {
 	Name   string
 	Status bool
@@ -664,6 +718,10 @@ func (d *Door) ChangeStatus(value bool) {
 	d.Status = value
 }
 
+/* ROOM THE STATE STORAGE */
+
+// Responsible for storing room
+// state.
 type Room struct {
 	Name      string
 	Inventory map[string]map[string]struct{}
@@ -699,28 +757,6 @@ func (r *Room) GetGateways() []string {
 
 func (r *Room) GetEntryWelcome() string {
 	return r.EntryWelcome
-}
-
-func NewWorld(c ConfigWorld) *World {
-	return &World{
-		Player: c.Player,
-
-		Items: c.Items,
-		Doors: c.Doors,
-		Rooms: c.Rooms,
-	}
-}
-
-func (w *World) GetItems() map[string]Item {
-	return w.Items
-}
-
-func (w *World) GetDoors() map[string]*Door {
-	return w.Doors
-}
-
-func (w *World) GetRooms() map[string]*Room {
-	return w.Rooms
 }
 
 /*
