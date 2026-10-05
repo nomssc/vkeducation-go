@@ -51,10 +51,8 @@ func initGame() {
 
 	var (
 		DoorStreet = Door{
-			Name:   "дверь на улицу",
+			Name:   "дверь",
 			Status: false,
-
-			OpenedWith: ItemKeys.Name,
 		}
 	)
 
@@ -165,12 +163,13 @@ func initGame() {
 	})
 
 	walk := &WalkTransport{Usecase: &WalkUsecase{World: world}, AgrumentsCount: 1}
+	open := &OpenTransport{Usecase: &OpenUsecase{World: world}, AgrumentsCount: 2}
 	take := &TakeTransport{Usecase: &TakeUsecase{World: world}, AgrumentsCount: 1}
 	putOn := &PutOnTransport{Usecase: &PutOnUsecase{World: world}, AgrumentsCount: 1}
 
 	//cli.Handle("осмотреться", nil)
 	cli.Handle("идти", walk.Handler)
-	//cli.Handle("применить", nil)
+	cli.Handle("применить", open.Handler)
 	cli.Handle("взять", take.Handler)
 	cli.Handle("надеть", putOn.Handler)
 }
@@ -187,7 +186,8 @@ var (
 	ErrTransportUnexpectedStuff            = errors.New("неожиданная ошибка")
 	ErrTransportIncorrectNumberOfArguments = errors.New("некорректное количество аргументов")
 	ErrTransportInventoryNotAvailable      = errors.New("некуда класть")
-	ErrTransportItemIsNotInTheInventory    = errors.New("нет такого")
+	ErrTransportItemIsNotInTheInventory    = errors.New("нет предмета в инвентаре")
+	ErrTransportItemIsNotInTheRoom         = errors.New("нет такого")
 	ErrTransportNoGateway                  = errors.New("нет пути")
 	ErrTransportDoorIsClosed               = errors.New("дверь закрыта")
 	ErrTransportRoomDoesNotExists          = errors.New("комната не существует")
@@ -197,7 +197,48 @@ var (
 	ErrTransportItemAlreadyInTheInventory  = errors.New("предмент уже есть в инвентаре")
 	ErrTransportItemCantBePutOn            = errors.New("предмет нельзя надеть")
 	ErrTransportItemAlreadyPutOn           = errors.New("предмет уже надет")
+	ErrTransportItemCantBeUsed             = errors.New("не к чему применить")
+	ErrTransportRoomDoesNotHaveDoors       = errors.New("комната не имеет дверей")
 )
+
+type OpenTransport struct {
+	Usecase *OpenUsecase
+
+	AgrumentsCount int
+}
+
+func (t *OpenTransport) Handler(r Request, w *ResponseWriter) {
+	if !validateArgumentsCount(r.Args(), t.AgrumentsCount) {
+		w.Error(ErrTransportIncorrectNumberOfArguments)
+		return
+	}
+
+	err := t.Usecase.Open(r.Args()[0], r.Args()[1])
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrServiceItemDoesNotExists):
+			w.Error(ErrTransportItemDoesNotExists)
+			return
+		case errors.Is(err, ErrServiceItemIsNotInTheInventory):
+			w.Error(fmt.Errorf("%w - %s", ErrTransportItemIsNotInTheInventory, r.Args()[0]))
+			return
+		case errors.Is(err, ErrServiceItemCantOpenDoors) || errors.Is(err, ErrServiceObjectIsNotDoor):
+			w.Error(ErrTransportItemCantBeUsed)
+			return
+		case errors.Is(err, ErrServiceRoomDoesNotExists):
+			w.Error(ErrTransportRoomDoesNotExists)
+			return
+		case errors.Is(err, ErrServiceRoomDoesNotHaveDoors):
+			w.Error(ErrTransportRoomDoesNotHaveDoors)
+			return
+		default:
+			w.Error(ErrTransportUnexpectedStuff)
+			return
+		}
+	}
+
+	w.Write("дверь открыта")
+}
 
 type PutOnTransport struct {
 	Usecase *PutOnUsecase
@@ -221,13 +262,13 @@ func (t *PutOnTransport) Handler(r Request, w *ResponseWriter) {
 			w.Error(ErrTransportItemCantBePutOn)
 			return
 		case errors.Is(err, ErrServiceRoomDoesNotExists):
-			w.Error(fmt.Errorf("%w", ErrTransportRoomDoesNotExists))
+			w.Error(ErrTransportRoomDoesNotExists)
 			return
 		case errors.Is(err, ErrServiceItemAlreadyPutOn):
 			w.Error(ErrTransportItemAlreadyPutOn)
 			return
-		case errors.Is(err, ErrServiceItemIsNotInTheInventory):
-			w.Error(ErrTransportItemIsNotInTheInventory)
+		case errors.Is(err, ErrServiceItemIsNotInTheRoom):
+			w.Error(ErrTransportItemIsNotInTheRoom)
 			return
 		default:
 			w.Error(ErrTransportUnexpectedStuff)
@@ -254,13 +295,13 @@ func (t *TakeTransport) Handler(r Request, w *ResponseWriter) {
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrServiceRoomDoesNotExists):
-			w.Error(fmt.Errorf("%w", ErrTransportRoomDoesNotExists))
+			w.Error(ErrTransportRoomDoesNotExists)
 			return
 		case errors.Is(err, ErrServiceInventoryNotAvailable):
 			w.Error(ErrTransportInventoryNotAvailable)
 			return
-		case errors.Is(err, ErrServiceItemIsNotInTheInventory):
-			w.Error(ErrTransportItemIsNotInTheInventory)
+		case errors.Is(err, ErrServiceItemIsNotInTheRoom):
+			w.Error(ErrTransportItemIsNotInTheRoom)
 			return
 		case errors.Is(err, ErrServiceItemDoesNotExists):
 			w.Error(ErrTransportItemDoesNotExists)
@@ -296,19 +337,19 @@ func (t *WalkTransport) Handler(r Request, w *ResponseWriter) {
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrServiceRoomDoesNotExists):
-			w.Error(fmt.Errorf("%w", ErrTransportRoomDoesNotExists))
+			w.Error(ErrTransportRoomDoesNotExists)
 			return
 		case errors.Is(err, ErrServiceNoGateway):
 			w.Error(fmt.Errorf("%w в %s", ErrTransportNoGateway, r.Args()[0]))
 			return
 		case errors.Is(err, ErrServiceNoGateway):
-			w.Error(fmt.Errorf("%w", ErrTransportDoorIsClosed))
+			w.Error(ErrTransportDoorIsClosed)
 			return
 		case errors.Is(err, ErrServiceDoorDoesNotExists):
-			w.Error(fmt.Errorf("%w", ErrTransportDoorDoesNotExists))
+			w.Error(ErrTransportDoorDoesNotExists)
 			return
 		case errors.Is(err, ErrServiceDoorIsClosed):
-			w.Error(fmt.Errorf("%w", ErrTransportDoorIsClosed))
+			w.Error(ErrTransportDoorIsClosed)
 			return
 		default:
 			w.Error(ErrTransportUnexpectedStuff)
@@ -342,10 +383,63 @@ var (
 	ErrServiceDoorIsClosed              = errors.New("door is closed")
 	ErrServiceItemAlreadyInTheInventory = errors.New("item already in the inventory")
 	ErrServiceItemIsNotInTheInventory   = errors.New("item is not the inventory")
+	ErrServiceItemIsNotInTheRoom        = errors.New("item is not the room")
 	ErrServiceItemAlreadyPutOn          = errors.New("item already put on")
 	ErrServiceItemCantBeCarried         = errors.New("item can't be carried")
 	ErrServiceItemCantBePutOn           = errors.New("item can't be put on")
+	ErrServiceItemCantOpenDoors         = errors.New("item can't open doors")
+	ErrServiceObjectIsNotDoor           = errors.New("object is not a door")
+	ErrServiceRoomDoesNotHaveDoors      = errors.New("room does not have doors")
 )
+
+type OpenUsecase struct {
+	World *World
+}
+
+func (u *OpenUsecase) Open(itemName string, object string) error {
+	inventory := u.World.Player.GetInventory()
+	_, ok := inventory[itemName]
+	if !ok {
+		return ErrServiceItemIsNotInTheInventory
+	}
+	items := u.World.GetItems()
+	item, ok := items[itemName]
+	if !ok {
+		return ErrServiceItemDoesNotExists
+	}
+	if !item.GetOpenDoors() {
+		return ErrServiceItemCantOpenDoors
+	}
+	doors := u.World.GetDoors()
+	door, ok := doors[object]
+	if !ok {
+		return ErrServiceObjectIsNotDoor
+	}
+
+	roomName := u.World.Player.GetPosition()
+	rooms := u.World.GetRooms()
+	room, ok := rooms[roomName]
+	if !ok {
+		return ErrServiceRoomDoesNotExists
+	}
+	exists := false
+	gateways := room.GetGateways()
+	for _, gateway := range gateways {
+		rooms := u.World.GetRooms()
+		room := rooms[gateway]
+		doorName := room.GetDoor()
+		if doorName != "" || doorName == object {
+			exists = true
+		}
+	}
+	if !exists {
+		return ErrServiceRoomDoesNotHaveDoors
+	}
+
+	door.ChangeStatus(true)
+
+	return nil
+}
 
 type PutOnUsecase struct {
 	World *World
@@ -376,7 +470,7 @@ func (u *PutOnUsecase) PutOn(itemName string) error {
 
 	err := room.RemoveItem(itemName)
 	if err != nil {
-		return ErrServiceItemIsNotInTheInventory
+		return ErrServiceItemIsNotInTheRoom
 	}
 	u.World.Player.StoreWear(itemName)
 	u.World.Player.ChangeInventoryAvailability(true)
@@ -411,7 +505,7 @@ func (u *TakeUsecase) Take(itemName string) error {
 
 	err := room.RemoveItem(itemName)
 	if err != nil {
-		return ErrServiceItemIsNotInTheInventory
+		return ErrServiceItemIsNotInTheRoom
 	}
 
 	inventory := u.World.Player.GetInventory()
@@ -560,16 +654,14 @@ func (i Item) GetCarry() bool {
 type Door struct {
 	Name   string
 	Status bool
-
-	OpenedWith string
 }
 
 func (d *Door) GetDoorStatus() bool {
 	return d.Status
 }
 
-func (d *Door) GetOpenedWith() string {
-	return d.OpenedWith
+func (d *Door) ChangeStatus(value bool) {
+	d.Status = value
 }
 
 type Room struct {
