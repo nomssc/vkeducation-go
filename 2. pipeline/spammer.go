@@ -36,6 +36,8 @@ func RunPipeline(cmds ...cmd) {
 }
 
 func SelectUsers(in, out chan interface{}) {
+	uniqueUsers := make(map[uint64]struct{})
+
 	wg := &sync.WaitGroup{}
 
 	for v := range in {
@@ -50,7 +52,12 @@ func SelectUsers(in, out chan interface{}) {
 			defer wg.Done()
 
 			user := GetUser(email)
-			out <- user
+
+			_, ok := uniqueUsers[user.ID]
+			if !ok {
+				uniqueUsers[user.ID] = struct{}{}
+				out <- user
+			}
 		}(out)
 	}
 
