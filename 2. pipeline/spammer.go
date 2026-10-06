@@ -78,7 +78,9 @@ func SelectMessages(in, out chan interface{}) {
 		dummy := make([]User, 0, len(users))
 		copy(dummy, users)
 
+		users = make([]User, GetMessagesMaxUsersBatch)
 		i = 0
+
 		wg.Add(1)
 
 		go func(users []User, out chan interface{}) {
