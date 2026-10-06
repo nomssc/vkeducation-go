@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"slices"
 	"sync"
 	"sync/atomic"
 )
@@ -153,7 +155,36 @@ func CheckSpam(in, out chan interface{}) {
 }
 
 func CombineResults(in, out chan interface{}) {
-	// in - MsgData
-	// out - string
+	msgs := make([]MsgData, 0)
 
+	for v := range in {
+		msgData, ok := v.(MsgData)
+		if !ok || msgData.ID == 0 {
+			continue
+		}
+
+		msgs = append(msgs, msgData)
+	}
+
+	slices.SortFunc(msgs, func(a, b MsgData) int {
+		if a.HasSpam != b.HasSpam {
+			if a.HasSpam {
+				return -1
+			}
+			return 1
+		}
+
+		if a.ID < b.ID {
+			return -1
+		}
+		if a.ID > b.ID {
+			return 1
+		}
+
+		return 0
+	})
+
+	for _, msg := range msgs {
+		out <- fmt.Sprintf("%v %v", msg.HasSpam, msg.ID)
+	}
 }
