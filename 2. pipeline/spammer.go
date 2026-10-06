@@ -31,8 +31,36 @@ func RunPipeline(cmds ...cmd) {
 	wg.Wait()
 }
 
+type Map struct {
+	store map[uint64]struct{}
+
+	mu sync.Mutex
+}
+
+func NewMap() *Map {
+	return &Map{
+		store: map[uint64]struct{}{},
+	}
+}
+
+func (m *Map) Set(key uint64) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.store[key] = struct{}{}
+}
+
+func (m *Map) Get(key uint64) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	_, ok := m.store[key]
+
+	return ok
+}
+
 func SelectUsers(in, out chan interface{}) {
-	uniqueUsers := sync.Map{}
+	uniqueUsers := NewMap()
 
 	wg := &sync.WaitGroup{}
 
@@ -44,17 +72,17 @@ func SelectUsers(in, out chan interface{}) {
 
 		wg.Add(1)
 
-		go func(out chan interface{}) {
+		go func(email string, out chan interface{}) {
 			defer wg.Done()
 
 			user := GetUser(email)
 
-			_, ok := uniqueUsers.Load(user.ID)
+			ok := uniqueUsers.Get(user.ID)
 			if !ok {
-				uniqueUsers.Store(user.ID, struct{}{})
+				uniqueUsers.Set(user.ID)
 				out <- user
 			}
-		}(out)
+		}(email, out)
 	}
 
 	wg.Wait()
@@ -66,8 +94,8 @@ func SelectMessages(in, out chan interface{}) {
 	wg := &sync.WaitGroup{}
 
 	for {
-		v, end := <-in
-		if end {
+		v, running := <-in
+		if !running {
 			if len(users) > 0 {
 				wg.Add(1)
 				go proccessBatch(wg, users, out)
