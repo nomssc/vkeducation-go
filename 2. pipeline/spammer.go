@@ -44,6 +44,7 @@ func SelectUsers(in, out chan interface{}) {
 		email, ok := v.(string)
 		if !ok {
 			log.Println(fmt.Errorf("%w: %v", ErrInvalidDataType, v))
+			continue
 		}
 
 		wg.Add(1)
