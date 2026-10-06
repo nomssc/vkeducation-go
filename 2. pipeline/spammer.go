@@ -1,14 +1,7 @@
 package main
 
 import (
-	"errors"
-	"fmt"
-	"log"
 	"sync"
-)
-
-var (
-	ErrInvalidDataType = errors.New("not able to proccess this data type")
 )
 
 func RunPipeline(cmds ...cmd) {
@@ -43,7 +36,6 @@ func SelectUsers(in, out chan interface{}) {
 	for v := range in {
 		email, ok := v.(string)
 		if !ok {
-			log.Println(fmt.Errorf("%w: %v", ErrInvalidDataType, v))
 			continue
 		}
 
