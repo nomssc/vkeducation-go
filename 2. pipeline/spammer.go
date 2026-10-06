@@ -1,6 +1,15 @@
 package main
 
-import "sync"
+import (
+	"errors"
+	"fmt"
+	"log"
+	"sync"
+)
+
+var (
+	ErrInvalidDataType = errors.New("not able to proccess this data type")
+)
 
 func RunPipeline(cmds ...cmd) {
 	wg := &sync.WaitGroup{}
@@ -27,8 +36,25 @@ func RunPipeline(cmds ...cmd) {
 }
 
 func SelectUsers(in, out chan interface{}) {
-	// 	in - string
-	// 	out - User
+	wg := &sync.WaitGroup{}
+
+	for v := range in {
+		email, ok := v.(string)
+		if !ok {
+			log.Println(fmt.Errorf("%w: %v", ErrInvalidDataType, v))
+		}
+
+		wg.Add(1)
+
+		go func(out chan interface{}) {
+			defer wg.Done()
+
+			user := GetUser(email)
+			out <- user
+		}(out)
+	}
+
+	wg.Wait()
 }
 
 func SelectMessages(in, out chan interface{}) {
