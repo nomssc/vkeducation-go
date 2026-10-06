@@ -102,25 +102,25 @@ func proccessBatch(wg *sync.WaitGroup, users []User, out chan interface{}) {
 	}
 }
 
-type RateLimititer struct {
+type RateLimiter struct {
 	count atomic.Int64
 }
 
-func (r *RateLimititer) Load() int {
+func (r *RateLimiter) Load() int {
 	return int(r.count.Load())
 }
 
-func (r *RateLimititer) Add(delta int) {
+func (r *RateLimiter) Add(delta int) {
 	r.count.Add(int64(delta))
 }
 
-func (r *RateLimititer) Clear() {
+func (r *RateLimiter) Clear() {
 	r.count.Store(0)
 }
 
 func CheckSpam(in, out chan interface{}) {
 	wg := &sync.WaitGroup{}
-	rl := &RateLimititer{}
+	rl := &RateLimiter{}
 
 	for v := range in {
 		msgID, ok := v.(MsgID)
@@ -155,4 +155,5 @@ func CheckSpam(in, out chan interface{}) {
 func CombineResults(in, out chan interface{}) {
 	// in - MsgData
 	// out - string
+
 }
