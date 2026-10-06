@@ -29,7 +29,7 @@ func RunPipeline(cmds ...cmd) {
 }
 
 func SelectUsers(in, out chan interface{}) {
-	uniqueUsers := make(map[uint64]struct{})
+	uniqueUsers := sync.Map{}
 
 	wg := &sync.WaitGroup{}
 
@@ -46,9 +46,9 @@ func SelectUsers(in, out chan interface{}) {
 
 			user := GetUser(email)
 
-			_, ok := uniqueUsers[user.ID]
+			_, ok := uniqueUsers.Load(user.ID)
 			if !ok {
-				uniqueUsers[user.ID] = struct{}{}
+				uniqueUsers.Store(user.ID, struct{}{})
 				out <- user
 			}
 		}(out)
