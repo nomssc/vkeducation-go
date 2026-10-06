@@ -2,6 +2,7 @@ package main
 
 import (
 	"sync"
+	"sync/atomic"
 )
 
 func RunPipeline(cmds ...cmd) {
@@ -101,9 +102,54 @@ func proccessBatch(wg *sync.WaitGroup, users []User, out chan interface{}) {
 	}
 }
 
+type RateLimititer struct {
+	count atomic.Int64
+}
+
+func (r *RateLimititer) Load() int {
+	return int(r.count.Load())
+}
+
+func (r *RateLimititer) Add(delta int) {
+	r.count.Add(int64(delta))
+}
+
+func (r *RateLimititer) Clear() {
+	r.count.Store(0)
+}
+
 func CheckSpam(in, out chan interface{}) {
-	// in - MsgID
-	// out - MsgData
+	wg := &sync.WaitGroup{}
+	rl := &RateLimititer{}
+
+	for v := range in {
+		msgID, ok := v.(MsgID)
+		if !ok || msgID == 0 {
+			continue
+		}
+
+		wg.Add(1)
+		rl.Add(1)
+
+		go func(msgID MsgID, out chan interface{}) {
+			defer wg.Done()
+
+			msgData := MsgData{ID: msgID}
+
+			spam, _ := HasSpam(msgID)
+			msgData.HasSpam = spam
+
+			out <- msgData
+		}(msgID, out)
+
+		if rl.Load() == HasSpamMaxAsyncRequests {
+			wg.Wait()
+			rl.Clear()
+		}
+	}
+
+	wg.Wait()
+	rl.Clear()
 }
 
 func CombineResults(in, out chan interface{}) {
