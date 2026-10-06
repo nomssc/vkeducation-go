@@ -58,43 +58,47 @@ func SelectUsers(in, out chan interface{}) {
 }
 
 func SelectMessages(in, out chan interface{}) {
-	users := make([]User, GetMessagesMaxUsersBatch)
-	i := 0
+	users := make([]User, 0, GetMessagesMaxUsersBatch)
 
 	wg := &sync.WaitGroup{}
 
-	for v := range in {
+	for {
+		v, end := <-in
+		if end {
+			if len(users) > 0 {
+				wg.Add(1)
+				go proccessBatch(wg, users, out)
+			}
+
+			break
+		}
+
 		user, ok := v.(User)
 		if !ok || user.ID == 0 || user.Email == "" {
 			continue
 		}
 
-		if i < GetMessagesMaxUsersBatch-1 {
-			users[i] = user
-			i++
-			continue
+		users = append(users, user)
+
+		if len(users) == GetMessagesMaxUsersBatch {
+			wg.Add(1)
+			go proccessBatch(wg, users, out)
+
+			users = make([]User, 0, GetMessagesMaxUsersBatch)
 		}
-
-		dummy := make([]User, 0, len(users))
-		copy(dummy, users)
-
-		users = make([]User, GetMessagesMaxUsersBatch)
-		i = 0
-
-		wg.Add(1)
-
-		go func(users []User, out chan interface{}) {
-			defer wg.Done()
-
-			msgs, _ := GetMessages(users...)
-
-			for _, msg := range msgs {
-				out <- msg
-			}
-		}(dummy, out)
 	}
 
 	wg.Wait()
+}
+
+func proccessBatch(wg *sync.WaitGroup, users []User, out chan interface{}) {
+	defer wg.Done()
+
+	msgs, _ := GetMessages(users...)
+
+	for _, msg := range msgs {
+		out <- msg
+	}
 }
 
 func CheckSpam(in, out chan interface{}) {
