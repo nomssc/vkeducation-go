@@ -38,7 +38,7 @@ func SelectUsers(in, out chan interface{}) {
 
 	for v := range in {
 		email, ok := v.(string)
-		if !ok {
+		if !ok || email == "" {
 			continue
 		}
 
