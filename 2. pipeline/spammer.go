@@ -58,8 +58,41 @@ func SelectUsers(in, out chan interface{}) {
 }
 
 func SelectMessages(in, out chan interface{}) {
-	// 	in - User
-	// 	out - MsgID
+	users := make([]User, GetMessagesMaxUsersBatch)
+	i := 0
+
+	wg := &sync.WaitGroup{}
+
+	for v := range in {
+		user, ok := v.(User)
+		if !ok || user.ID == 0 || user.Email == "" {
+			continue
+		}
+
+		if i < GetMessagesMaxUsersBatch-1 {
+			users[i] = user
+			i++
+			continue
+		}
+
+		dummy := make([]User, 0, len(users))
+		copy(dummy, users)
+
+		i = 0
+		wg.Add(1)
+
+		go func(users []User, out chan interface{}) {
+			defer wg.Done()
+
+			msgs, _ := GetMessages(users...)
+
+			for _, msg := range msgs {
+				out <- msg
+			}
+		}(dummy, out)
+	}
+
+	wg.Wait()
 }
 
 func CheckSpam(in, out chan interface{}) {
