@@ -73,7 +73,7 @@ func GetMessages(users ...User) (res []MsgID, err error) {
 
 	messages := make([]MsgID, 0, 10*len(users))
 	for _, u := range users {
-		r := rand.New(rand.NewSource(int64(u.ID))) //nolint: gosec
+		r := rand.New(rand.NewSource(int64(u.ID)))
 		n := r.Intn(10)
 		for i := 0; i <= n; i++ {
 			messages = append(messages, MsgID(r.Uint64()))
