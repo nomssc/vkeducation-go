@@ -1,3 +1,9 @@
+// Package main implements a small user-search service together with a test
+// harness for its client.
+//
+// SearchServer plays the role of an "external system": it reads users from an
+// XML dataset and serves them over HTTP with filtering, sorting and pagination.
+// SearchClient (see client.go) is the consumer of that API.
 package main
 
 import (
@@ -13,14 +19,20 @@ import (
 	"strings"
 )
 
-// datasetPath — путь до файла с данными (глобальная переменная, чтобы тесты могли его подменять).
+// datasetPath is the path to the XML file with users. It is a package-level
+// variable so that tests can point the server at a different (or broken) file.
 var datasetPath = "dataset.xml"
 
-// validAccessToken — токен, который SearchServer считает корректным.
+// validAccessToken is the only value of the AccessToken header that
+// SearchServer accepts. Any other value results in 401 Unauthorized.
 const validAccessToken = "good_token"
 
+// errBadOrderBy is returned by parseParams when the order_by parameter is not
+// a number or is not one of OrderByAsc, OrderByAsIs and OrderByDesc.
 var errBadOrderBy = errors.New("OrderBy invalid")
 
+// xmlRow mirrors a single <row> element of the dataset. Only the fields that
+// are needed to build a User are declared; all other elements are ignored.
 type xmlRow struct {
 	ID        int    `xml:"id"`
 	Age       int    `xml:"age"`
@@ -30,19 +42,36 @@ type xmlRow struct {
 	About     string `xml:"about"`
 }
 
+// xmlRoot mirrors the <root> element of the dataset and holds all its rows.
 type xmlRoot struct {
 	Rows []xmlRow `xml:"row"`
 }
 
+// searchParams holds validated query parameters of a search request.
 type searchParams struct {
-	limit      int
-	offset     int
-	query      string
-	orderField string // нормализованное: "id", "age" или "name"
-	orderBy    int
+	// limit is the maximum number of users to return.
+	limit int
+	// offset is the number of users to skip after filtering and sorting.
+	offset int
+	// query is a substring to look for in the Name and About fields.
+	// An empty query matches every user.
+	query string
+	// orderField is the normalized sort field: "id", "age" or "name".
+	orderField string
+	// orderBy is the sort direction: OrderByAsc, OrderByAsIs or OrderByDesc.
+	orderBy int
 }
 
-// parseParams разбирает и валидирует параметры запроса.
+// parseParams extracts and validates the search parameters from the URL query
+// of r: limit, offset, query, order_field and order_by.
+//
+// The limit and offset parameters must be non-negative integers, order_by must
+// be one of OrderByAsc, OrderByAsIs and OrderByDesc, and order_field must be
+// empty or one of "id", "age" and "name" (case-insensitive). An empty
+// order_field defaults to sorting by name.
+//
+// On failure the returned error describes the first invalid parameter; for an
+// unknown order_field its text equals ErrorBadOrderField.
 func parseParams(r *http.Request) (searchParams, error) {
 	q := r.URL.Query()
 	p := searchParams{query: q.Get("query")}
@@ -72,7 +101,11 @@ func parseParams(r *http.Request) (searchParams, error) {
 	return p, nil
 }
 
-// loadUsers читает пользователей из xml-файла потоково через Decoder.
+// loadUsers reads the XML dataset at path and converts every row into a User.
+// The user's Name is built as the first name followed by a space and the last
+// name. The file is parsed with a streaming xml.Decoder.
+//
+// It returns an error if the file cannot be opened or contains malformed XML.
 func loadUsers(path string) ([]User, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -98,6 +131,8 @@ func loadUsers(path string) ([]User, error) {
 	return users, nil
 }
 
+// filterUsers returns the users whose Name or About contains query as a
+// case-sensitive substring. An empty query returns users unchanged.
 func filterUsers(users []User, query string) []User {
 	if query == "" {
 		return users
@@ -111,6 +146,10 @@ func filterUsers(users []User, query string) []User {
 	return res
 }
 
+// sortUsers sorts users in place by the given field ("id", "age"; anything
+// else sorts by name) in the direction given by orderBy. With OrderByAsIs the
+// slice is left untouched. The sort is stable, so users with equal keys keep
+// their original relative order.
 func sortUsers(users []User, field string, orderBy int) {
 	if orderBy == OrderByAsIs {
 		return
@@ -132,6 +171,8 @@ func sortUsers(users []User, field string, orderBy int) {
 	sort.SliceStable(users, less)
 }
 
+// paginate returns at most limit users starting at index offset. It returns an
+// empty, non-nil slice when offset is past the end of users.
 func paginate(users []User, offset, limit int) []User {
 	if offset >= len(users) {
 		return []User{}
@@ -143,7 +184,9 @@ func paginate(users []User, offset, limit int) []User {
 	return users[offset:end]
 }
 
-// sendJSON сериализует v и отправляет клиенту с нужным статусом.
+// sendJSON marshals v to JSON and writes it to w with the given HTTP status
+// and a JSON content type. If v cannot be marshaled, it responds with 500
+// Internal Server Error and no body. A failure to write the response is logged.
 func sendJSON(w http.ResponseWriter, status int, v interface{}) {
 	data, err := json.Marshal(v)
 	if err != nil {
@@ -157,7 +200,24 @@ func sendJSON(w http.ResponseWriter, status int, v interface{}) {
 	}
 }
 
-// SearchServer — «внешняя система», ищущая пользователей в dataset.xml.
+// SearchServer is an http.HandlerFunc that searches users in the XML dataset
+// located at datasetPath. It is the server side of SearchClient.
+//
+// The request must carry the AccessToken header equal to validAccessToken and
+// the following query parameters:
+//
+//	limit        maximum number of users to return
+//	offset       number of users to skip after filtering and sorting
+//	query        substring to look for in Name or About (empty: no filtering)
+//	order_field  "id", "age" or "name" (empty: "name")
+//	order_by     1 ascending, 0 keep file order, -1 descending
+//
+// Responses:
+//
+//	200  a JSON array of users
+//	400  a JSON SearchErrorResponse describing the invalid parameter
+//	401  the access token is missing or wrong
+//	500  the dataset cannot be read or parsed
 func SearchServer(w http.ResponseWriter, r *http.Request) {
 	if r.Header.Get("AccessToken") != validAccessToken {
 		w.WriteHeader(http.StatusUnauthorized)

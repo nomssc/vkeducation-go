@@ -12,8 +12,9 @@ import (
 	"time"
 )
 
-// ---------- helpers ----------
-
+// newSearchClient starts a test HTTP server backed by SearchServer and returns
+// a SearchClient that talks to it using the given access token. The server is
+// shut down automatically when the test finishes.
 func newSearchClient(t *testing.T, token string) *SearchClient {
 	t.Helper()
 	ts := httptest.NewServer(http.HandlerFunc(SearchServer))
@@ -21,6 +22,8 @@ func newSearchClient(t *testing.T, token string) *SearchClient {
 	return &SearchClient{AccessToken: token, URL: ts.URL}
 }
 
+// withDataset points SearchServer at the dataset file at path for the duration
+// of the test and restores the previous path afterwards.
 func withDataset(t *testing.T, path string) {
 	t.Helper()
 	old := datasetPath
@@ -28,6 +31,7 @@ func withDataset(t *testing.T, path string) {
 	t.Cleanup(func() { datasetPath = old })
 }
 
+// userNames returns the Name of every user, preserving order.
 func userNames(users []User) []string {
 	res := make([]string, 0, len(users))
 	for _, u := range users {
@@ -36,6 +40,7 @@ func userNames(users []User) []string {
 	return res
 }
 
+// userIDs returns the ID of every user, preserving order.
 func userIDs(users []User) []int {
 	res := make([]int, 0, len(users))
 	for _, u := range users {
@@ -44,6 +49,7 @@ func userIDs(users []User) []int {
 	return res
 }
 
+// idRange returns the consecutive integers from..to inclusive.
 func idRange(from, to int) []int {
 	res := make([]int, 0, to-from+1)
 	for i := from; i <= to; i++ {
@@ -52,15 +58,16 @@ func idRange(from, to int) []int {
 	return res
 }
 
-// ---------- FindUsers + SearchServer: успешные сценарии ----------
-
+// TestFindUsersSuccess runs SearchClient.FindUsers against the real
+// SearchServer and the real dataset, and checks the exact users, their order
+// and the NextPage flag for sorting, searching and pagination scenarios.
 func TestFindUsersSuccess(t *testing.T) {
 	cl := newSearchClient(t, validAccessToken)
 
 	cases := []struct {
 		name     string
 		req      SearchRequest
-		wantIDs  []int // nil — не проверяем
+		wantIDs  []int // nil means "do not check"
 		wantName []string
 		wantNext bool
 	}{
@@ -174,6 +181,8 @@ func TestFindUsersSuccess(t *testing.T) {
 	}
 }
 
+// TestFindUsersReturnsFullRecord checks that every User field, not just the
+// ID and Name, is filled in correctly from the dataset.
 func TestFindUsersReturnsFullRecord(t *testing.T) {
 	cl := newSearchClient(t, validAccessToken)
 	resp, err := cl.FindUsers(SearchRequest{Limit: 1, Query: "Boyd", OrderBy: OrderByAsIs})
@@ -192,8 +201,9 @@ func TestFindUsersReturnsFullRecord(t *testing.T) {
 	}
 }
 
-// ---------- FindUsers: ошибки, которые клиент ловит сам или от сервера ----------
-
+// TestFindUsersErrors checks the error returned by FindUsers for invalid
+// requests: those rejected by the client itself and those rejected by
+// SearchServer with 400 or 401. On error the response must be nil.
 func TestFindUsersErrors(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -224,8 +234,9 @@ func TestFindUsersErrors(t *testing.T) {
 	}
 }
 
-// ---------- FindUsers: проблемные внешние системы ----------
-
+// TestFindUsersBrokenExternalSystem points FindUsers at fake servers that
+// misbehave (500, malformed JSON, slow response) and checks that the client
+// reports each failure with the expected error.
 func TestFindUsersBrokenExternalSystem(t *testing.T) {
 	cases := []struct {
 		name       string
@@ -275,6 +286,8 @@ func TestFindUsersBrokenExternalSystem(t *testing.T) {
 	}
 }
 
+// TestFindUsersUnknownError checks that a transport error that is not a
+// timeout (here: an unsupported URL scheme) is reported as an unknown error.
 func TestFindUsersUnknownError(t *testing.T) {
 	cl := &SearchClient{AccessToken: validAccessToken, URL: "unsupported-scheme://host"}
 	_, err := cl.FindUsers(SearchRequest{Limit: 1})
@@ -283,6 +296,9 @@ func TestFindUsersUnknownError(t *testing.T) {
 	}
 }
 
+// TestFindUsersSendsAccessTokenAndParams verifies the wire format of the
+// request produced by FindUsers: the AccessToken header and all query
+// parameters, including the limit incremented by one to detect a next page.
 func TestFindUsersSendsAccessTokenAndParams(t *testing.T) {
 	var gotToken string
 	var gotQuery map[string][]string
@@ -302,7 +318,7 @@ func TestFindUsersSendsAccessTokenAndParams(t *testing.T) {
 		t.Errorf("token = %q, want tok", gotToken)
 	}
 	want := map[string][]string{
-		"limit":       {"6"}, // клиент запрашивает на 1 больше
+		"limit":       {"6"}, // the client asks for one extra record
 		"offset":      {"2"},
 		"query":       {"q"},
 		"order_field": {"Age"},
@@ -313,8 +329,8 @@ func TestFindUsersSendsAccessTokenAndParams(t *testing.T) {
 	}
 }
 
-// ---------- SearchServer напрямую ----------
-
+// callServer invokes SearchServer in-process with the given raw URL query and
+// access token (omitted when empty) and returns the recorded response.
 func callServer(rawQuery, token string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(http.MethodGet, "/?"+rawQuery, nil)
 	if token != "" {
@@ -325,6 +341,8 @@ func callServer(rawQuery, token string) *httptest.ResponseRecorder {
 	return rec
 }
 
+// TestSearchServerBadParams checks that malformed or out-of-range query
+// parameters are rejected with 400 and a descriptive error message.
 func TestSearchServerBadParams(t *testing.T) {
 	cases := []struct {
 		name      string
@@ -353,6 +371,8 @@ func TestSearchServerBadParams(t *testing.T) {
 	}
 }
 
+// TestSearchServerUnauthorized checks that a missing or wrong access token
+// results in 401 Unauthorized.
 func TestSearchServerUnauthorized(t *testing.T) {
 	for _, token := range []string{"", "wrong"} {
 		rec := callServer("limit=1&offset=0&order_by=0", token)
@@ -362,6 +382,9 @@ func TestSearchServerUnauthorized(t *testing.T) {
 	}
 }
 
+// TestSearchServerOrderFieldCaseInsensitiveAndOK checks that every supported
+// order_field value, in any letter case, is accepted, and that an empty value
+// is accepted too.
 func TestSearchServerOrderFieldCaseInsensitiveAndOK(t *testing.T) {
 	for _, f := range []string{"", "id", "ID", "Age", "age", "Name", "name"} {
 		rec := callServer("limit=1&offset=0&order_by=1&order_field="+f, validAccessToken)
@@ -371,6 +394,8 @@ func TestSearchServerOrderFieldCaseInsensitiveAndOK(t *testing.T) {
 	}
 }
 
+// TestSearchServerEmptyResultIsJSONArray checks that a search without matches
+// is encoded as an empty JSON array rather than null.
 func TestSearchServerEmptyResultIsJSONArray(t *testing.T) {
 	rec := callServer("limit=5&offset=0&order_by=0&query=zzzzzz-nothing", validAccessToken)
 	if rec.Code != http.StatusOK {
@@ -381,6 +406,9 @@ func TestSearchServerEmptyResultIsJSONArray(t *testing.T) {
 	}
 }
 
+// TestSearchServerDatasetErrors checks that an unreadable or malformed dataset
+// file leads to 500 Internal Server Error, which the client reports as a
+// fatal server error.
 func TestSearchServerDatasetErrors(t *testing.T) {
 	t.Run("missing file", func(t *testing.T) {
 		withDataset(t, filepath.Join(t.TempDir(), "no-such-file.xml"))
@@ -412,6 +440,9 @@ func TestSearchServerDatasetErrors(t *testing.T) {
 	})
 }
 
+// TestSearchServerCustomDataset swaps the dataset for a tiny hand-written one
+// and checks that the whole User record, including the joined first and last
+// name, is mapped and sorted correctly.
 func TestSearchServerCustomDataset(t *testing.T) {
 	const data = `<?xml version="1.0" encoding="UTF-8" ?>
 <root>
@@ -441,25 +472,34 @@ func TestSearchServerCustomDataset(t *testing.T) {
 	}
 }
 
-// ---------- sendJSON: негативные сценарии ----------
-
+// failingWriter is an http.ResponseWriter whose Write always fails. It records
+// the status code passed to WriteHeader.
 type failingWriter struct {
 	header http.Header
 	status int
 }
 
-func (f *failingWriter) Header() http.Header       { return f.header }
-func (f *failingWriter) WriteHeader(status int)    { f.status = status }
+// Header returns the header map of the failing writer.
+func (f *failingWriter) Header() http.Header { return f.header }
+
+// WriteHeader records the status code.
+func (f *failingWriter) WriteHeader(status int) { f.status = status }
+
+// Write always fails with an error.
 func (f *failingWriter) Write([]byte) (int, error) { return 0, errors.New("write failed") }
 
+// TestSendJSONMarshalError checks that a value that cannot be marshaled to
+// JSON (a channel) yields 500 Internal Server Error.
 func TestSendJSONMarshalError(t *testing.T) {
 	rec := httptest.NewRecorder()
-	sendJSON(rec, http.StatusOK, make(chan int)) // chan не сериализуется в JSON
+	sendJSON(rec, http.StatusOK, make(chan int)) // channels cannot be encoded as JSON
 	if rec.Code != http.StatusInternalServerError {
 		t.Errorf("status = %d, want 500", rec.Code)
 	}
 }
 
+// TestSendJSONWriteError checks that sendJSON survives a failing writer: the
+// status is still sent and the write error is only logged.
 func TestSendJSONWriteError(t *testing.T) {
 	w := &failingWriter{header: http.Header{}}
 	sendJSON(w, http.StatusOK, []User{})
