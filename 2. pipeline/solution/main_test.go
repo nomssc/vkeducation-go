@@ -11,13 +11,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-/*
-это тест на проверку того что у нас это действительно конвейер
-неправильное поведение: накапливать результаты выполнения одной функции, а потом слать их в следующую.
-
-это не позволяет запускать на конвейере бесконечные задачи
-правильное поведение: обеспечить беспрепятственный поток
-*/
 func TestPipeline(t *testing.T) {
 
 	var ok = true
@@ -27,10 +20,6 @@ func TestPipeline(t *testing.T) {
 			out <- 1
 			time.Sleep(10 * time.Millisecond)
 			currRecieved := atomic.LoadUint32(&recieved)
-			// в чем тут суть
-			// если вы накапливаете значения, то пока вся функция не отработает - дальше они не пойдут
-			// тут я проверяю, что счетчик увеличился в следующей функции
-			// это значит что туда дошло значение прежде чем текущая функция отработала
 			if currRecieved == 0 {
 				ok = false
 			}
@@ -50,13 +39,6 @@ func TestPipeline(t *testing.T) {
 		"счетчик recieved в итоге не увеличился, а должен был")
 }
 
-/*
-этот тест проверяет то, что все функции действительно выполнились
-и дает представление о влиянии time.Sleep в одном из звеньев конвейера на время работы
-
-возможно кому-то будет легче с ним
-при правильной реализации ваш код конечно же должен его проходить
-*/
 func TestPipeline2(t *testing.T) {
 
 	var recieved uint32
@@ -93,7 +75,6 @@ func TestPipeline2(t *testing.T) {
 		"f3 have not collected inputs, recieved = %d", recieved)
 }
 
-// инициализация джобы, которая просто выплюнет в out подряд все из слайса строк strs
 func newCatStrings(strs []string, pauses time.Duration) func(in, out chan interface{}) {
 	return func(in, out chan interface{}) {
 		for _, email := range strs {
@@ -105,7 +86,6 @@ func newCatStrings(strs []string, pauses time.Duration) func(in, out chan interf
 	}
 }
 
-// инициализация джобы, которая считает из in все строки, пока канал не закроется. и положит все в strs
 func newCollectStrings(strs *[]string) func(in, out chan interface{}) {
 	return func(in, out chan interface{}) {
 		for dataRaw := range in {
@@ -115,7 +95,6 @@ func newCollectStrings(strs *[]string) func(in, out chan interface{}) {
 	}
 }
 
-// проверяем рейс в SelectUsers
 func TestUsersRace(t *testing.T) {
 	inputData := make([]string, 10000)
 	for i := range inputData {
@@ -134,10 +113,9 @@ func TestUsersRace(t *testing.T) {
 		"итоговый результат отличается от ожидаемого")
 }
 
-// проверяем, что SelectUsers корректно обрабатывает алиасы и не повторяет одних и тех же юзеров
 func TestAlias(t *testing.T) {
 	inputData := []string{
-		"batman@mail.ru", // is an alias for bruce.wayne@mail.ru
+		"batman@mail.ru",
 		"bruce.wayne@mail.ru",
 	}
 	expectedOutput := []string{
@@ -156,7 +134,6 @@ func TestAlias(t *testing.T) {
 		"итоговый результат отличается от ожидаемого")
 }
 
-// проверяем, что запуски функций SelectUsers,SelectMessages в параллельных RunPipeline не влияют друг на друга
 func TestParallelPiplines(t *testing.T) {
 	inputData := []string{
 		"1000@mail.ru",
@@ -199,7 +176,6 @@ func TestParallelPiplines(t *testing.T) {
 	wg.Wait()
 
 	expectedTime := 2700 * time.Millisecond
-	// на винде иногда тормознутые sleep'ы и они могут отрабатывать дольше, чем ожидается.
 	if runtime.GOOS == "windows" {
 		expectedTime += 50 * time.Millisecond
 	}
@@ -218,10 +194,10 @@ func TestTotal(t *testing.T) {
 		"d.vader@mail.ru",
 		"noname@mail.ru",
 		"e.musk@mail.ru",
-		"spiderman@mail.ru", // is an alias for peter.parker@mail.ru
+		"spiderman@mail.ru",
 		"red_prince@mail.ru",
 		"tomasangelo@mail.ru",
-		"batman@mail.ru", // is an alias for bruce.wayne@mail.ru
+		"batman@mail.ru",
 		"bruce.wayne@mail.ru",
 	}
 	expectedOutput := []string{
@@ -282,7 +258,6 @@ func TestTotal(t *testing.T) {
 	)
 
 	expectedTime := 3000 * time.Millisecond
-	// на винде иногда тормознутые sleep'ы и они могут отрабатывать дольше, чем ожидается.
 	if runtime.GOOS == "windows" {
 		expectedTime += 50 * time.Millisecond
 	}
