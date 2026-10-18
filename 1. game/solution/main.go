@@ -1,3 +1,21 @@
+// Package main implements a small Multi User Dungeon style text game.
+//
+// The game world consists of rooms connected by gateways, items that lie on
+// pieces of furniture, doors that can be opened, and a player with an
+// inventory, clothes and goals. The player controls the game with text
+// commands such as "осмотреться" (look around), "идти коридор" (walk to the
+// hallway), "взять ключи" (take the keys), "надеть рюкзак" (put on the
+// backpack) and "применить ключи дверь" (use the keys on the door).
+//
+// The code is split into layers:
+//   - CLI: parses a command line and routes it to a handler;
+//   - transport: validates arguments and turns results and errors into
+//     player-facing text;
+//   - service (use cases): contains the game logic of every command;
+//   - world: stores the state of the player, rooms, items and doors.
+//
+// The whole world is described in initGame, so rooms, doors and items can be
+// added or removed without touching the rest of the code.
 package main
 
 import (
@@ -7,8 +25,13 @@ import (
 	"strings"
 )
 
+// main is intentionally empty: the game is driven through handleCommand, which
+// is called by the tests.
 func main() {}
 
+// initGame creates a new world with a fresh player, rooms, items and doors, and
+// a CLI with all game commands attached. It replaces the global world and cli,
+// so calling it again restarts the game from the beginning.
 func initGame() {
 	var (
 		itemKeys = Item{
@@ -45,8 +68,6 @@ func initGame() {
 		roomNameStreet  = "улица"
 	)
 
-	// Gateway{Label, Room}: the label is what the player types and sees,
-	// the room is where it actually leads. They differ for "домой".
 	kitchen := &Room{
 		Name: roomNameKitchen,
 		Furniture: []Furniture{
@@ -95,11 +116,10 @@ func initGame() {
 		Position:  roomNameKitchen,
 		Goals: []Goal{
 			{Name: "собрать рюкзак", Done: func(p *Player) bool { return p.GetInventoryAvailable() }},
-			{Name: "идти в универ"}, // can't be completed in this version of the game
+			{Name: "идти в универ"},
 		},
 	}
 
-	// Kitchen-specific behavior lives here, not in the usecase.
 	kitchen.LookoutExtra = func(p *Player) string {
 		pending := p.PendingGoals()
 		if len(pending) == 0 {
@@ -150,14 +170,7 @@ func initGame() {
 	cli.Handle("надеть", putOn.Handler)
 }
 
-/*
- * TRANSPORT LAYER
- *
- * Responsible for user
- * input and game output,
- * routing and validation.
- */
-
+// Errors of the transport layer. Their text is shown to the player as is.
 var (
 	ErrTransportUnexpectedStuff            = errors.New("неожиданная ошибка")
 	ErrTransportIncorrectNumberOfArguments = errors.New("не хватает параметров")
@@ -174,14 +187,16 @@ var (
 	ErrTransportItemCantBeUsed             = errors.New("не к чему применить")
 )
 
-/* LOOKOUT COMMAND TRANSPORT LOGIC */
-
+// LookoutTransport is the transport of the "осмотреться" command. It validates
+// the request and passes it to LookoutUsecase.
 type LookoutTransport struct {
 	Usecase *LookoutUsecase
 
 	ArgumentsCount int
 }
 
+// Handler handles the "осмотреться" command: it writes the description of the
+// current room, or a player-facing error.
 func (t *LookoutTransport) Handler(r Request, w *ResponseWriter) {
 	if len(r.Args()) < t.ArgumentsCount {
 		w.Error(ErrTransportIncorrectNumberOfArguments)
@@ -201,14 +216,16 @@ func (t *LookoutTransport) Handler(r Request, w *ResponseWriter) {
 	w.Write(message)
 }
 
-/* OPEN COMMAND TRANSPORT LOGIC */
-
+// OpenTransport is the transport of the "применить" command. It validates the
+// request and passes it to OpenUsecase.
 type OpenTransport struct {
 	Usecase *OpenUsecase
 
 	ArgumentsCount int
 }
 
+// Handler handles the "применить <item> <object>" command: it writes a
+// confirmation when the door gets opened, or a player-facing error.
 func (t *OpenTransport) Handler(r Request, w *ResponseWriter) {
 	if len(r.Args()) < t.ArgumentsCount {
 		w.Error(ErrTransportIncorrectNumberOfArguments)
@@ -236,14 +253,16 @@ func (t *OpenTransport) Handler(r Request, w *ResponseWriter) {
 	w.Write("дверь открыта")
 }
 
-/* PUT ON COMMAND TRANSPORT LOGIC */
-
+// PutOnTransport is the transport of the "надеть" command. It validates the
+// request and passes it to PutOnUsecase.
 type PutOnTransport struct {
 	Usecase *PutOnUsecase
 
 	ArgumentsCount int
 }
 
+// Handler handles the "надеть <item>" command: it writes a confirmation when
+// the item has been put on, or a player-facing error.
 func (t *PutOnTransport) Handler(r Request, w *ResponseWriter) {
 	if len(r.Args()) < t.ArgumentsCount {
 		w.Error(ErrTransportIncorrectNumberOfArguments)
@@ -271,14 +290,16 @@ func (t *PutOnTransport) Handler(r Request, w *ResponseWriter) {
 	w.Write(fmt.Sprintf("вы надели: %s", r.Args()[0]))
 }
 
-/* TAKE COMMAND TRANSPORT LOGIC */
-
+// TakeTransport is the transport of the "взять" command. It validates the
+// request and passes it to TakeUsecase.
 type TakeTransport struct {
 	Usecase *TakeUsecase
 
 	ArgumentsCount int
 }
 
+// Handler handles the "взять <item>" command: it writes a confirmation when the
+// item has been added to the inventory, or a player-facing error.
 func (t *TakeTransport) Handler(r Request, w *ResponseWriter) {
 	if len(r.Args()) < t.ArgumentsCount {
 		w.Error(ErrTransportIncorrectNumberOfArguments)
@@ -308,14 +329,16 @@ func (t *TakeTransport) Handler(r Request, w *ResponseWriter) {
 	w.Write(fmt.Sprintf("предмет добавлен в инвентарь: %s", r.Args()[0]))
 }
 
-/* WALK COMMAND TRANSPORT LOGIC */
-
+// WalkTransport is the transport of the "идти" command. It validates the
+// request and passes it to WalkUsecase.
 type WalkTransport struct {
 	Usecase *WalkUsecase
 
 	ArgumentsCount int
 }
 
+// Handler handles the "идти <direction>" command: it writes the welcome text of
+// the new room followed by the available gateways, or a player-facing error.
 func (t *WalkTransport) Handler(r Request, w *ResponseWriter) {
 	if len(r.Args()) < t.ArgumentsCount {
 		w.Error(ErrTransportIncorrectNumberOfArguments)
@@ -348,12 +371,8 @@ func (t *WalkTransport) Handler(r Request, w *ResponseWriter) {
 	w.Write(fmt.Sprintf("%s. можно пройти - %s", entryWelcome, gateways))
 }
 
-/*
- * SERVICE LAYER
- *
- * Processes business logic.
- */
-
+// Errors of the service layer. The transport layer translates them into
+// player-facing errors.
 var (
 	ErrServiceNoGateway               = errors.New("no gateway")
 	ErrServiceDoorDoesNotExists       = errors.New("door does not exists")
@@ -369,12 +388,16 @@ var (
 	ErrServiceObjectIsNotDoor         = errors.New("object is not a door")
 )
 
-/* LOOKOUT COMMAND INTERNAL LOGIC */
-
+// LookoutUsecase implements the logic of the "осмотреться" command.
 type LookoutUsecase struct {
 	World *World
 }
 
+// Lookout describes the room the player is in: the room's welcome text, the
+// items lying on its furniture (or a text for an empty room), an optional
+// room-specific addition, and the available gateways.
+//
+// It returns ErrServiceRoomDoesNotExists if the player's position is unknown.
 func (u *LookoutUsecase) Lookout() (string, error) {
 	room, ok := u.World.GetRooms()[u.World.Player.GetPosition()]
 	if !ok {
@@ -417,12 +440,18 @@ func (u *LookoutUsecase) Lookout() (string, error) {
 	return result, nil
 }
 
-/* OPEN COMMAND INTERNAL LOGIC */
-
+// OpenUsecase implements the logic of the "применить" command.
 type OpenUsecase struct {
 	World *World
 }
 
+// Open uses the item itemName from the player's inventory to open the door
+// object. The item must be able to open doors, and the door must belong to a
+// room reachable from the player's current room.
+//
+// It returns one of ErrServiceItemIsNotInTheInventory,
+// ErrServiceItemDoesNotExists, ErrServiceItemCantOpenDoors,
+// ErrServiceObjectIsNotDoor or ErrServiceRoomDoesNotExists on failure.
 func (u *OpenUsecase) Open(itemName string, object string) error {
 	if _, ok := u.World.Player.GetInventory()[itemName]; !ok {
 		return ErrServiceItemIsNotInTheInventory
@@ -447,7 +476,6 @@ func (u *OpenUsecase) Open(itemName string, object string) error {
 		return ErrServiceRoomDoesNotExists
 	}
 
-	// The door must belong to a room reachable from where the player stands.
 	reachable := false
 	for _, gateway := range room.GetGateways() {
 		next, ok := rooms[gateway.Room]
@@ -465,12 +493,17 @@ func (u *OpenUsecase) Open(itemName string, object string) error {
 	return nil
 }
 
-/* PUT ON COMMAND INTERNAL LOGIC */
-
+// PutOnUsecase implements the logic of the "надеть" command.
 type PutOnUsecase struct {
 	World *World
 }
 
+// PutOn takes the item itemName from the current room and puts it on the
+// player. If the item gives an inventory (like a backpack), the player can
+// carry items afterwards.
+//
+// It returns ErrServiceItemDoesNotExists, ErrServiceRoomDoesNotExists,
+// ErrServiceItemIsNotInTheRoom or ErrServiceItemCantBePutOn on failure.
 func (u *PutOnUsecase) PutOn(itemName string) error {
 	item, ok := u.World.GetItems()[itemName]
 	if !ok {
@@ -481,7 +514,6 @@ func (u *PutOnUsecase) PutOn(itemName string) error {
 		return ErrServiceRoomDoesNotExists
 	}
 
-	// The item has to be here before anything else is said about it.
 	if !room.HasItem(itemName) {
 		return ErrServiceItemIsNotInTheRoom
 	}
@@ -501,12 +533,18 @@ func (u *PutOnUsecase) PutOn(itemName string) error {
 	return nil
 }
 
-/* TAKE COMMAND INTERNAL LOGIC */
-
+// TakeUsecase implements the logic of the "взять" command.
 type TakeUsecase struct {
 	World *World
 }
 
+// Take moves the item itemName from the current room to the player's
+// inventory. The item must lie in the room, be carriable, and the player must
+// already have an inventory.
+//
+// It returns ErrServiceItemDoesNotExists, ErrServiceRoomDoesNotExists,
+// ErrServiceItemIsNotInTheRoom, ErrServiceItemCantBeCarried or
+// ErrServiceInventoryNotAvailable on failure.
 func (u *TakeUsecase) Take(itemName string) error {
 	item, ok := u.World.GetItems()[itemName]
 	if !ok {
@@ -517,7 +555,6 @@ func (u *TakeUsecase) Take(itemName string) error {
 		return ErrServiceRoomDoesNotExists
 	}
 
-	// The item has to be here before anything else is said about it.
 	if !room.HasItem(itemName) {
 		return ErrServiceItemIsNotInTheRoom
 	}
@@ -529,8 +566,6 @@ func (u *TakeUsecase) Take(itemName string) error {
 		return ErrServiceInventoryNotAvailable
 	}
 
-	// An item the player already took is no longer in the room,
-	// so it is reported as "нет такого" here.
 	if err := room.RemoveItem(itemName); err != nil {
 		return ErrServiceItemIsNotInTheRoom
 	}
@@ -540,12 +575,18 @@ func (u *TakeUsecase) Take(itemName string) error {
 	return nil
 }
 
-/* WALK COMMAND INTERNAL LOGIC */
-
+// WalkUsecase implements the logic of the "идти" command.
 type WalkUsecase struct {
 	World *World
 }
 
+// Walk moves the player through the gateway of the current room whose label is
+// direction. It returns the welcome text of the new room and a comma-separated
+// list of the gateway labels leading out of it.
+//
+// It returns ErrServiceRoomDoesNotExists, ErrServiceNoGateway,
+// ErrServiceDoorDoesNotExists or ErrServiceDoorIsClosed on failure; in that
+// case the player does not move.
 func (u *WalkUsecase) Walk(direction string) (string, string, error) {
 	rooms := u.World.GetRooms()
 
@@ -585,25 +626,16 @@ func (u *WalkUsecase) Walk(direction string) (string, string, error) {
 	return nextRoom.GetEntryWelcome(), strings.Join(nextRoom.GatewayLabels(), ", "), nil
 }
 
-/*
- * WORLD LAYER
- *
- * Acts as database for world
- * resources.
- */
-
-/* WORLD THE STATE STORAGE */
-
+// world is the global game world, created by initGame.
 var world *World
 
-// Used to configurate world on
-// inititalization.
+// ConfigWorld is used to configure the world on initialization.
 type ConfigWorld struct {
 	World
 }
 
-// Responsible for storing the
-// whole game world state.
+// World stores the whole game world state: the player and all items, doors and
+// rooms, indexed by name.
 type World struct {
 	Player *Player
 
@@ -612,6 +644,7 @@ type World struct {
 	Rooms map[string]*Room
 }
 
+// NewWorld creates a World from the given configuration.
 func NewWorld(c ConfigWorld) *World {
 	return &World{
 		Player: c.Player,
@@ -622,75 +655,92 @@ func NewWorld(c ConfigWorld) *World {
 	}
 }
 
+// GetItems returns all items of the world indexed by name.
 func (w *World) GetItems() map[string]Item {
 	return w.Items
 }
 
+// GetDoors returns all doors of the world indexed by name.
 func (w *World) GetDoors() map[string]*Door {
 	return w.Doors
 }
 
+// GetRooms returns all rooms of the world indexed by name.
 func (w *World) GetRooms() map[string]*Room {
 	return w.Rooms
 }
 
-/* PLAYER THE STATE STORAGE */
-
-// A goal with a nil Done function is never completed.
+// Goal is something the player has to do. A goal with a nil Done function is
+// never completed.
 type Goal struct {
 	Name string
 	Done func(p *Player) bool
 }
 
-// Responsible for storing player
-// state.
+// Player stores the state of the player.
 type Player struct {
-	Name      string
+	Name string
+	// Inventory is the set of names of the items the player carries.
 	Inventory map[string]struct{}
-	Clothes   map[string]struct{}
-	Position  string
-	Goals     []Goal
+	// Clothes is the set of names of the items the player wears.
+	Clothes map[string]struct{}
+	// Position is the name of the room the player is in.
+	Position string
+	// Goals are the things the player has to do.
+	Goals []Goal
 
+	// InventoryAvailable reports whether the player can carry items, that is,
+	// whether they are wearing something that gives an inventory.
 	InventoryAvailable bool
 }
 
+// GetName returns the player's name.
 func (p *Player) GetName() string {
 	return p.Name
 }
 
+// GetInventory returns the set of names of the items the player carries.
 func (p *Player) GetInventory() map[string]struct{} {
 	return p.Inventory
 }
 
+// StoreItem puts the item itemName into the player's inventory.
 func (p *Player) StoreItem(itemName string) {
 	p.Inventory[itemName] = struct{}{}
 }
 
+// GetClothes returns the set of names of the items the player wears.
 func (p *Player) GetClothes() map[string]struct{} {
 	return p.Clothes
 }
 
+// StoreWear marks the item itemName as worn by the player.
 func (p *Player) StoreWear(itemName string) {
 	p.Clothes[itemName] = struct{}{}
 }
 
+// GetPosition returns the name of the room the player is in.
 func (p *Player) GetPosition() string {
 	return p.Position
 }
 
+// ChangePosition moves the player to the room roomName.
 func (p *Player) ChangePosition(roomName string) {
 	p.Position = roomName
 }
 
+// GetInventoryAvailable reports whether the player can carry items.
 func (p *Player) GetInventoryAvailable() bool {
 	return p.InventoryAvailable
 }
 
+// ChangeInventoryAvailability sets whether the player can carry items.
 func (p *Player) ChangeInventoryAvailability(value bool) {
 	p.InventoryAvailable = value
 }
 
-// Names of the goals that are not complete yet, in declaration order.
+// PendingGoals returns the names of the goals that are not complete yet, in
+// declaration order.
 func (p *Player) PendingGoals() []string {
 	pending := make([]string, 0, len(p.Goals))
 
@@ -703,96 +753,110 @@ func (p *Player) PendingGoals() []string {
 	return pending
 }
 
-/* ITEM THE STORAGE DEFINITION */
-
-// Defines parameters.
+// Item defines the parameters of an item: what the player can do with it.
 type Item struct {
 	Name string
 
-	OpenDoors      bool
-	PutOn          bool
-	Carry          bool
+	// OpenDoors tells that the item can open doors.
+	OpenDoors bool
+	// PutOn tells that the item can be put on.
+	PutOn bool
+	// Carry tells that the item can be put into the inventory.
+	Carry bool
+	// GivesInventory tells that wearing the item gives the player an inventory.
 	GivesInventory bool
 }
 
+// GetName returns the item's name.
 func (i Item) GetName() string {
 	return i.Name
 }
 
+// GetOpenDoors reports whether the item can open doors.
 func (i Item) GetOpenDoors() bool {
 	return i.OpenDoors
 }
 
+// GetPutOn reports whether the item can be put on.
 func (i Item) GetPutOn() bool {
 	return i.PutOn
 }
 
+// GetCarry reports whether the item can be put into the inventory.
 func (i Item) GetCarry() bool {
 	return i.Carry
 }
 
+// GetGivesInventory reports whether wearing the item gives an inventory.
 func (i Item) GetGivesInventory() bool {
 	return i.GivesInventory
 }
 
-/* DOOR THE STORAGE DEFINITION */
-
-// Defines parameters.
+// Door defines the parameters of a door. Status is true when the door is open.
 type Door struct {
 	Name   string
 	Status bool
 }
 
+// GetDoorStatus reports whether the door is open.
 func (d *Door) GetDoorStatus() bool {
 	return d.Status
 }
 
+// ChangeStatus opens (true) or closes (false) the door.
 func (d *Door) ChangeStatus(value bool) {
 	d.Status = value
 }
 
-/* ROOM THE STATE STORAGE */
-
+// errRoomItemNotFound is returned by Room.RemoveItem when the room does not
+// contain the requested item.
 var errRoomItemNotFound = errors.New("item is not in the room")
 
-// A piece of furniture and the items lying on it,
-// kept in order so the output is deterministic.
+// Furniture is a piece of furniture and the items lying on it, kept in order so
+// the output is deterministic.
 type Furniture struct {
-	Place string // full phrase, e.g. "на столе"
+	Place string
 	Items []string
 }
 
-// A way out of a room: Label is what the player types,
-// Room is the room it leads to.
+// Gateway is a way out of a room: Label is what the player types, Room is the
+// room it leads to.
 type Gateway struct {
 	Label string
 	Room  string
 }
 
-// Responsible for storing room
-// state.
+// Room stores the state of a room.
 type Room struct {
 	Name      string
 	Furniture []Furniture
-	Door      string
-	Gateways  []Gateway
+	// Door is the name of the door that has to be open to enter the room.
+	// It is empty for rooms without a door.
+	Door     string
+	Gateways []Gateway
 
-	EntryWelcome   string
+	// EntryWelcome is the text shown when the player enters the room.
+	EntryWelcome string
+	// LookoutWelcome is the text that starts the room description on lookout.
 	LookoutWelcome string
 	EmptyText      string // what the lookout says when nothing lies in the room
 
-	// Optional room-specific addition to the lookout text.
+	// LookoutExtra is an optional room-specific addition to the lookout text.
 	LookoutExtra func(p *Player) string
 }
 
+// GetName returns the room's name.
 func (r *Room) GetName() string {
 	return r.Name
 }
 
+// GetFurniture returns the furniture of the room.
 func (r *Room) GetFurniture() []Furniture {
 	return r.Furniture
 }
 
+// RemoveItem removes the item itemName from the furniture of the room. It
+// returns errRoomItemNotFound if there is no such item in the room.
 func (r *Room) RemoveItem(itemName string) error {
 	for i := range r.Furniture {
 		items := r.Furniture[i].Items
@@ -805,14 +869,18 @@ func (r *Room) RemoveItem(itemName string) error {
 	return errRoomItemNotFound
 }
 
+// GetDoor returns the name of the door of the room, or an empty string if the
+// room has no door.
 func (r *Room) GetDoor() string {
 	return r.Door
 }
 
+// GetGateways returns the gateways leading out of the room.
 func (r *Room) GetGateways() []Gateway {
 	return r.Gateways
 }
 
+// GatewayLabels returns the labels of all gateways of the room, in order.
 func (r *Room) GatewayLabels() []string {
 	labels := make([]string, 0, len(r.Gateways))
 	for _, gateway := range r.Gateways {
@@ -822,18 +890,22 @@ func (r *Room) GatewayLabels() []string {
 	return labels
 }
 
+// GetEntryWelcome returns the text shown when the player enters the room.
 func (r *Room) GetEntryWelcome() string {
 	return r.EntryWelcome
 }
 
+// GetLookoutWelcome returns the text that starts the lookout description.
 func (r *Room) GetLookoutWelcome() string {
 	return r.LookoutWelcome
 }
 
+// GetEmptyText returns the text shown by lookout when nothing lies in the room.
 func (r *Room) GetEmptyText() string {
 	return r.EmptyText
 }
 
+// HasItem reports whether the item itemName lies on any furniture of the room.
 func (r *Room) HasItem(itemName string) bool {
 	for _, f := range r.Furniture {
 		if slices.Contains(f.Items, itemName) {
@@ -844,82 +916,80 @@ func (r *Room) HasItem(itemName string) bool {
 	return false
 }
 
+// GetLookoutExtra returns the optional room-specific lookout addition, or nil.
 func (r *Room) GetLookoutExtra() func(p *Player) string {
 	return r.LookoutExtra
 }
 
-/*
- * CLI PACKAGE
- *
- * Backend backbone.
- */
-
-/* CLI THE TRANSPORT MASTER */
-
+// Errors of the CLI layer. Their text is shown to the player as is.
 var (
 	ErrCLINoCommand            = errors.New("команда не предоставлена")
 	ErrCLICommandDoesNotExists = errors.New("неизвестная команда")
 )
 
+// cli is the global command line interface, created by initGame.
 var cli *CLI
 
-// Responsible for storing request
-// state throughout handling the
-// command.
+// Request stores the state of a request throughout handling the command.
 type Request struct {
 	command string
 	args    []string
 }
 
+// Command returns the name of the command.
 func (c Request) Command() string {
 	return c.command
 }
 
+// Args returns the arguments of the command.
 func (c Request) Args() []string {
 	return c.args
 }
 
-// Stores responses and used to
-// write errors.
+// ResponseWriter stores the response of a handler: either a message or an error.
 type ResponseWriter struct {
 	message string
 	error   error
 }
 
+// Write sets the response message.
 func (r *ResponseWriter) Write(s string) {
 	r.message = s
 }
 
+// Error sets the response error. If an error is set, it takes precedence over
+// the message.
 func (r *ResponseWriter) Error(e error) {
 	r.error = e
 }
 
-// Handler type.
+// Handler is a function that handles a command.
 type Handler func(r Request, w *ResponseWriter)
 
-// Used to configurate CLI on
-// inititalization.
+// ConfigCLI is used to configure the CLI on initialization.
 type ConfigCLI struct {
 	CLI
 }
 
+// Router attaches handlers to commands and finds a handler by command name.
 type Router interface {
 	Attach(command string, h Handler)
 	Process(command string) (Handler, error)
 }
 
+// Interpreter splits a raw command string into its parts.
 type Interpreter interface {
 	UnparseCommandString(s string) ([]string, error)
 }
 
-// Responsible for controlling
-// program life and managing all
-// it's operations.
+// CLI controls the program life and manages all its operations: it parses
+// commands with Codec and routes them with Mux.
 type CLI struct {
 	Mux   Router
 	Codec Interpreter
 }
 
+// NewCLI creates a CLI from the given configuration.
 func NewCLI(c ConfigCLI) *CLI {
 	return &CLI{
 		Mux:   c.CLI.Mux,
@@ -927,6 +997,10 @@ func NewCLI(c ConfigCLI) *CLI {
 	}
 }
 
+// handleCommand executes one line typed by the player, in the form
+// "<command> <arg1> <arg2> ...", and returns the text to show to the player.
+// An empty line and an unknown command produce ErrCLINoCommand and
+// ErrCLICommandDoesNotExists respectively.
 func handleCommand(command string) string {
 	c, err := cli.Codec.UnparseCommandString(command)
 	if err != nil {
@@ -954,34 +1028,35 @@ func handleCommand(command string) string {
 	return w.message
 }
 
+// Handle attaches the handler h to the command.
 func (c *CLI) Handle(command string, h Handler) {
 	c.Mux.Attach(command, h)
 }
 
-/* MUX THE ROUTER */
-
-// Used to configurate Mux on
-// inititalization.
+// ConfigMux is used to configure the Mux on initialization.
 type ConfigMux struct {
 	Mux
 }
 
-// Responsible managing
-// handlers.
+// Mux manages command handlers.
 type Mux struct {
 	handlers map[string]Handler
 }
 
+// NewMux creates an empty Mux.
 func NewMux(c ...ConfigMux) *Mux {
 	return &Mux{
 		handlers: make(map[string]Handler),
 	}
 }
 
+// Attach registers the handler h for the command, replacing any previous one.
 func (m *Mux) Attach(command string, h Handler) {
 	m.handlers[command] = h
 }
 
+// Process returns the handler registered for the command, or an error if there
+// is none.
 func (m *Mux) Process(command string) (Handler, error) {
 	handler, ok := m.handlers[command]
 	if !ok {
@@ -991,22 +1066,21 @@ func (m *Mux) Process(command string) (Handler, error) {
 	return handler, nil
 }
 
-/* CODEC THE INPUT PARSER */
-
-// Used to configurate Codec on
-// inititalization.
+// ConfigCodec is used to configure the Codec on initialization.
 type ConfigCodec struct {
 	Codec
 }
 
-// Responsible for parsing and
-// unparsing inputs.
+// Codec parses and unparses inputs.
 type Codec struct{}
 
+// NewCodec creates a Codec.
 func NewCodec(c ...ConfigCodec) Codec {
 	return Codec{}
 }
 
+// UnparseCommandString splits s into whitespace-separated fields: the command
+// followed by its arguments. It returns an error if s has no fields.
 func (c Codec) UnparseCommandString(s string) ([]string, error) {
 	command := strings.Fields(s)
 	if len(command) < 1 {
